@@ -1,36 +1,35 @@
+/* 强制悬浮窗样式 */
 #bl-purifier-popup {
     position: fixed !important;
     top: 50% !important;
     left: 50% !important;
     transform: translate(-50%, -50%) !important;
-    width: 400px !important;
+    width: 420px !important;
     background: var(--SmartThemeBlurTintColor, #ffffff) !important;
     border: 2px solid var(--SmartThemeBorderColor, #7e57c2) !important;
     border-radius: 12px !important;
     z-index: 999999 !important;
-    padding: 20px 25px !important;
+    padding: 25px !important;
     box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4) !important;
     display: none;
     color: var(--text-color, #333) !important;
-    backdrop-filter: blur(20px) !important;
+    backdrop-filter: blur(20px);
 }
 
-.bl-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 15px; }
+.bl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
 .bl-title { font-size: 18px; font-weight: bold; margin: 0; }
-.bl-close { background: none; border: none; font-size: 24px; cursor: pointer; color: inherit; }
+.bl-close { cursor: pointer; font-size: 24px; background: none; border: none; color: inherit; }
 
-.bl-input-group { display: flex; gap: 8px; margin-bottom: 15px; }
-.bl-input { 
-    flex: 1; padding: 10px !important; border-radius: 8px !important; 
-    border: 1px solid var(--SmartThemeBorderColor, #ccc) !important;
-    background: var(--SmartThemeInputBackground, #fff) !important;
-    color: var(--SmartThemeBodyColor, #000) !important;
+/* 词汇展示区 */
+#bl-map-container {
+    max-height: 200px; overflow-y: auto; padding: 10px; 
+    background: rgba(0,0,0,0.05); border-radius: 8px; border: 1px solid #ddd;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 12px;
 }
-.bl-add-btn { padding: 10px 20px; background: var(--SmartThemeQuoteColor, #7e57c2); color: white; border: none; border-radius: 8px; cursor: pointer; }
+.bl-pair { display: flex; justify-content: space-between; background: #fff; padding: 3px 8px; border-radius: 4px; border: 1px solid #eee; }
+.bl-pair span { color: #d32f2f; cursor: pointer; font-weight: bold; }
 
-#bl-tags-container { 
-    max-height: 150px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,0.05); 
-    border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid #ddd;
-}
-.bl-tag { display: flex; align-items: center; padding: 4px 10px; background: #eee; border-radius: 4px; font-size: 13px; color: #333; }
-.bl-tag span { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
+/* 输入区 */
+.bl-input-group { display: flex; gap: 5px; margin-top: 15px; }
+.bl-input { flex: 1; padding: 8px !important; border-radius: 6px !important; border: 1px solid #999 !important; }
+.bl-add-btn { padding: 8px 15px; background: #7e57c2; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
