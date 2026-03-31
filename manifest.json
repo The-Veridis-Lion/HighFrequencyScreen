@@ -1,8 +1,11 @@
 {
-    "name": "freq-regex-helper",
-    "display_name": "词频与正则助手",
+    "display_name": "高频顽固词汇屏蔽助手",
+    "loading_order": 15,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "The-Veridis-Lion",
     "version": "1.0.0",
-    "description": "分析可见对话词频，辅助生成正则表达式。",
-    "author": "Assistant",
-    "main": "index.js"
+    "description": "分析可见对话词频，辅助生成正则表达式。"
 }
