@@ -1,79 +1,39 @@
-/* --- 弹窗主体 --- */
-#bl-helper-popup {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 380px;
-    /* 使用酒馆原生背景变量，确保亮色下变白，深色下变黑 */
-    background: var(--SmartThemeBlurTintColor, var(--bg-color, #1a1a1a));
-    border: 1px solid var(--SmartThemeBorderColor, #555);
-    border-radius: 12px;
-    z-index: 10001;
-    padding: 20px 25px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+/* 强制窗口脱离文档流，绝对不会挤压回复栏 */
+#bl-purifier-popup {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 400px !important;
+    background: var(--SmartThemeBlurTintColor, var(--bg-color, #1a1a1a)) !important;
+    border: 1px solid var(--SmartThemeBorderColor, #555) !important;
+    border-radius: 12px !important;
+    z-index: 20000 !important; /* 极高层级 */
+    padding: 20px 25px !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
     display: none;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    /* 核心修复：确保文字颜色始终可见 */
-    color: var(--text-color, #eee); 
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    color: var(--text-color, #eee) !important;
 }
 
-/* --- 标题栏 --- */
-.bl-popup-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-    padding-bottom: 12px;
-    margin-bottom: 15px;
-}
-.bl-popup-title {
-    font-size: 18px;
-    font-weight: bold;
-    margin: 0;
-    /* 确保标题文字清晰 */
-    color: var(--text-color, inherit); 
-}
-.bl-close-icon {
-    background: none; border: none; font-size: 24px;
-    cursor: pointer; color: var(--text-color); opacity: 0.6;
-}
+.bl-popup-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--SmartThemeBorderColor, #444); padding-bottom: 12px; margin-bottom: 15px; }
+.bl-popup-title { font-size: 18px; font-weight: bold; margin: 0; }
+.bl-close-icon { background: none; border: none; font-size: 26px; cursor: pointer; color: var(--text-color); opacity: 0.6; line-height: 1; }
 .bl-close-icon:hover { opacity: 1; color: #ff6b6b; }
 
-/* --- 输入区域修复 --- */
 .bl-input-group { display: flex; gap: 8px; margin-bottom: 15px; }
 .bl-input {
-    flex: 1;
-    padding: 10px 15px !important;
-    border-radius: 8px !important;
+    flex: 1; padding: 10px 15px !important; border-radius: 8px !important;
     border: 1px solid var(--SmartThemeBorderColor, #555) !important;
-    /* 确保输入文字在任何背景下都清晰 */
     background-color: var(--SmartThemeInputBackground, rgba(0,0,0,0.2)) !important;
-    color: var(--SmartThemeBodyColor, white) !important;
-    font-size: 15px !important;
+    color: var(--SmartThemeBodyColor, white) !important; font-size: 14px !important;
 }
 .bl-add-btn {
-    padding: 10px 20px;
-    background: var(--SmartThemeQuoteColor, #7e57c2);
-    color: white; border: none; border-radius: 8px;
-    cursor: pointer; font-weight: bold; transition: 0.2s;
+    padding: 10px 20px; background: var(--SmartThemeQuoteColor, #7e57c2);
+    color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;
 }
-.bl-add-btn:hover { filter: brightness(1.2); transform: translateY(-1px); }
 
-/* --- 词汇标签列表 --- */
-#bl-words-container {
-    max-height: 140px; overflow-y: auto; padding: 10px;
-    background: rgba(0,0,0,0.1); border-radius: 8px;
-    border: 1px solid var(--SmartThemeBorderColor, #444);
-    display: flex; flex-wrap: wrap; gap: 8px;
-}
-.bl-word-tag {
-    display: flex; align-items: center; padding: 5px 12px;
-    background: var(--SmartThemeButtonBackgroundColor, #333);
-    border: 1px solid var(--SmartThemeBorderColor, #555);
-    border-radius: 6px; font-size: 13px; color: var(--text-color);
-}
-.bl-word-tag .del-btn {
-    margin-left: 10px; color: #ff6b6b; cursor: pointer; font-weight: bold;
-}
+#bl-list { max-height: 140px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,0.1); border-radius: 8px; border: 1px solid var(--SmartThemeBorderColor, #444); display: flex; flex-wrap: wrap; gap: 8px; }
+.bl-tag { display: flex; align-items: center; padding: 5px 12px; background: var(--SmartThemeButtonBackgroundColor, #333); border: 1px solid var(--SmartThemeBorderColor, #555); border-radius: 6px; font-size: 13px; }
+.bl-tag span { margin-left: 10px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
