@@ -1,11 +1,9 @@
 {
-    "display_name": "屏蔽高频词汇",
-    "loading_order": 15,
-    "requires": [],
-    "optional": [],
+    "display_name": "屏蔽词净化助手",
+    "loading_order": 10,
     "js": "index.js",
     "css": "style.css",
     "author": "Assistant",
-    "version": "2.5.0",
-    "description": "物理切除 AI 记忆中的屏蔽词，防止复读繁殖。"
+    "version": "3.1.0",
+    "description": "物理切除内存与编辑框屏蔽词，防止 AI 复读。"
 }
