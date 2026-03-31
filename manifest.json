@@ -1,5 +1,5 @@
 {
-    "display_name": "屏蔽词屏蔽",
+    "display_name": "屏蔽高频词",
     "loading_order": 15,
     "requires": [],
     "optional": [],
