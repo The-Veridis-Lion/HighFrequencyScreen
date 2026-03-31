@@ -1,71 +1,79 @@
-/* 屏蔽词管家悬浮窗样式 */
+/* --- 弹窗主体 --- */
 #bl-helper-popup {
-    position: fixed; /* 核心：改为固定定位 */
+    position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%); /* 居中 */
+    transform: translate(-50%, -50%);
     width: 380px;
-    background: var(--SmartThemeBlurTintColor, var(--bg-color, rgba(20,20,20,0.95)));
-    border: 1px solid var(--SmartThemeBorderColor, var(--border-color, #555));
+    /* 使用酒馆原生背景变量，确保亮色下变白，深色下变黑 */
+    background: var(--SmartThemeBlurTintColor, var(--bg-color, #1a1a1a));
+    border: 1px solid var(--SmartThemeBorderColor, #555);
     border-radius: 12px;
-    z-index: 10001; /* 确保在最顶层 */
-    padding: 20px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-    display: none; /* 初始隐藏 */
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    color: var(--text-color, #eee);
+    z-index: 10001;
+    padding: 20px 25px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: none;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    /* 核心修复：确保文字颜色始终可见 */
+    color: var(--text-color, #eee); 
 }
 
+/* --- 标题栏 --- */
 .bl-popup-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid var(--border-color, #555);
-    padding-bottom: 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+    padding-bottom: 12px;
     margin-bottom: 15px;
 }
-
-.bl-popup-title { font-size: 18px; font-weight: bold; margin: 0; }
-.bl-close-icon { background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; opacity: 0.7; }
+.bl-popup-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 0;
+    /* 确保标题文字清晰 */
+    color: var(--text-color, inherit); 
+}
+.bl-close-icon {
+    background: none; border: none; font-size: 24px;
+    cursor: pointer; color: var(--text-color); opacity: 0.6;
+}
 .bl-close-icon:hover { opacity: 1; color: #ff6b6b; }
 
-/* 词汇列表 */
+/* --- 输入区域修复 --- */
+.bl-input-group { display: flex; gap: 8px; margin-bottom: 15px; }
+.bl-input {
+    flex: 1;
+    padding: 10px 15px !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--SmartThemeBorderColor, #555) !important;
+    /* 确保输入文字在任何背景下都清晰 */
+    background-color: var(--SmartThemeInputBackground, rgba(0,0,0,0.2)) !important;
+    color: var(--SmartThemeBodyColor, white) !important;
+    font-size: 15px !important;
+}
+.bl-add-btn {
+    padding: 10px 20px;
+    background: var(--SmartThemeQuoteColor, #7e57c2);
+    color: white; border: none; border-radius: 8px;
+    cursor: pointer; font-weight: bold; transition: 0.2s;
+}
+.bl-add-btn:hover { filter: brightness(1.2); transform: translateY(-1px); }
+
+/* --- 词汇标签列表 --- */
 #bl-words-container {
-    max-height: 140px;
-    overflow-y: auto;
-    padding: 10px;
-    background: rgba(0,0,0,0.2);
-    border-radius: 8px;
-    border: 1px solid var(--border-color, #444);
-    margin-bottom: 15px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    max-height: 140px; overflow-y: auto; padding: 10px;
+    background: rgba(0,0,0,0.1); border-radius: 8px;
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    display: flex; flex-wrap: wrap; gap: 8px;
 }
-
 .bl-word-tag {
-    display: flex;
-    align-items: center;
-    padding: 4px 10px;
+    display: flex; align-items: center; padding: 5px 12px;
     background: var(--SmartThemeButtonBackgroundColor, #333);
-    border: 1px solid var(--border-color, #555);
-    border-radius: 6px;
-    font-size: 13px;
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 6px; font-size: 13px; color: var(--text-color);
 }
-
-.bl-word-tag .del-btn { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
-
-/* 输入区 */
-.bl-input-group { display: flex; gap: 8px; margin-bottom: 5px; }
-.bl-input { 
-    flex: 1; padding: 8px 12px; 
-    background: rgba(0,0,0,0.3); 
-    border: 1px solid var(--border-color, #555); 
-    border-radius: 6px; color: white; 
-}
-.bl-add-btn { 
-    padding: 8px 15px; 
-    background: var(--SmartThemeQuoteColor, #444); 
-    color: white; border: none; border-radius: 6px; cursor: pointer; 
+.bl-word-tag .del-btn {
+    margin-left: 10px; color: #ff6b6b; cursor: pointer; font-weight: bold;
 }
