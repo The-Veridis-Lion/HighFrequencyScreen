@@ -1,4 +1,4 @@
-/* 弹窗主体：强制固定定位，解决顶起回复栏问题 */
+/* 弹窗主体保持悬浮，解决顶起回复栏问题 */
 #bl-purifier-popup {
     position: fixed !important;
     top: 50% !important; left: 50% !important;
@@ -21,12 +21,12 @@
 
 .bl-input-group { display: flex; gap: 8px; margin-bottom: 15px; }
 .bl-input { 
-    flex: 1; padding: 8px !important; border-radius: 6px !important; 
+    flex: 1; padding: 8px !important; border-radius: 5px !important; 
     border: 1px solid var(--SmartThemeBorderColor) !important; 
     background: var(--SmartThemeInputBackground) !important; 
     color: var(--SmartThemeBodyColor) !important; 
 }
-.bl-add-btn { padding: 5px 15px; background: var(--SmartThemeQuoteColor, #7e57c2); color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+.bl-add-btn { padding: 5px 15px; background: var(--SmartThemeQuoteColor, #7e57c2); color: #fff; border: none; border-radius: 5px; cursor: pointer; }
 
 #bl-tags-container { 
     max-height: 100px; overflow-y: auto; padding: 8px; background: rgba(0,0,0,0.05); 
@@ -38,9 +38,26 @@
 }
 .bl-tag span { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
 
-/* 核心修复：图标对齐 */
+/* 核心修复：对齐与颜色修正 */
+#bl-wand-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important; /* 强制靠左 */
+    gap: 8px !important;
+    padding: 5px 10px !important;
+    margin: 0 !important; /* 移除所有外边距防止靠右 */
+    cursor: pointer;
+    color: var(--text-color) !important; /* 修正变灰问题，使用原生文字色 */
+    opacity: 1 !important;
+}
+
 #bl-wand-btn i {
-    width: 20px; /* 固定图标宽度，确保与下方文字对齐 */
-    text-align: center;
-    margin-right: 8px;
+    width: 20px !important; /* 固定图标宽度确保对齐 */
+    text-align: center !important;
+    font-size: 16px;
+}
+
+#bl-wand-btn span {
+    text-align: left !important; /* 文字不居中 */
+    white-space: nowrap;
 }
