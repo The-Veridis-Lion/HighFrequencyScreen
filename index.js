@@ -1,13 +1,15 @@
-// 严格按照 hide 扩展的方式导入官方模块，不搞任何捷径
+// 严格保留官方模块导入
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const extensionName = "blacklist_helper";
+const extensionName = "auto_blacklist_helper";
+const REGEX_RULE_ID = "auto_blacklist_generated_rule"; // 我们在正则库里的专属ID
+
 const defaultSettings = {
     bannedWords: ["极度", "极其", "病态"]
 };
 
-// 弹窗居中函数 
+// 弹窗居中函数
 function centerPopup($popup) {
     if (!$popup || $popup.length === 0 || $popup.is(':hidden')) return;
     const windowWidth = $(window).width();
@@ -19,7 +21,7 @@ function centerPopup($popup) {
     $popup.css({ top: `${top}px`, left: `${left}px`, transform: 'none' });
 }
 
-// 初始化/加载扩展设置
+// 加载设置
 function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
     Object.assign(extension_settings[extensionName], {
@@ -28,14 +30,61 @@ function loadSettings() {
     });
 }
 
-// 创建 UI 面板
+// -------------------------------------------------------------
+// 【核心大招】：将屏蔽词全自动写入酒馆底层的正则表达式引擎
+// -------------------------------------------------------------
+function syncToNativeRegex() {
+    const words = extension_settings[extensionName].bannedWords;
+    
+    if (!extension_settings.regex) {
+        extension_settings.regex = [];
+    }
+
+    let ruleIndex = extension_settings.regex.findIndex(r => r.id === REGEX_RULE_ID);
+    
+    if (words.length === 0) {
+        // 如果黑名单为空，自动停用该正则
+        if (ruleIndex !== -1) extension_settings.regex[ruleIndex].disabled = true;
+    } else {
+        // 转义符号并生成正则
+        const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const regexStr = `/(${escapedWords.join('|')})/g`;
+
+        const ruleObj = {
+            id: REGEX_RULE_ID,
+            scriptName: "🚫 自动屏蔽词拦截 (由插件管理)",
+            regex: regexStr,
+            replacementStr: "***", // 全自动替换为 ***
+            placement: [1, 2], // 1:处理你发的，2:处理AI发的
+            disabled: false,
+            markdownOnly: false,
+            promptOnly: false,
+            runOnEdit: true,
+            minDepth: null,
+            maxDepth: null
+        };
+
+        if (ruleIndex !== -1) {
+            extension_settings.regex[ruleIndex] = ruleObj;
+        } else {
+            extension_settings.regex.push(ruleObj);
+        }
+    }
+
+    saveSettingsDebounced();
+    // 强制酒馆正则引擎热重载，让规则立刻生效！
+    if (typeof window.loadRegex === 'function') {
+        window.loadRegex();
+    }
+}
+
+// UI 注入代码 (完全保留 hide 的注入模式)
 function createUI() {
-    // 1. 注入到扩展列表，使用标准的抽屉格式
     const settingsHtml = `
     <div id="bl-helper-settings" class="hide-helper-container">
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>屏蔽词管家</b>
+                <b>自动屏蔽词管家</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content" style="padding:10px;">
@@ -47,19 +96,15 @@ function createUI() {
     </div>`;
     $("#extensions_settings").append(settingsHtml);
 
-    // 2. 创建输入区旁的魔法棒按钮
     createInputWandButton();
-    // 3. 创建弹窗
     createPopup();
-    // 4. 绑定所有事件
     setupEventListeners();
 }
 
-// 创建魔法棒快捷入口 (仿照 hide)
 function createInputWandButton() {
     $('#bl-helper-wand-button').remove();
     const buttonHtml = `
-        <div id="bl-helper-wand-button" title="打开屏蔽词管家" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; color:var(--text-secondary);">
+        <div id="bl-helper-wand-button" title="打开自动屏蔽词" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; color:var(--text-secondary);">
             <i class="fa-solid fa-ban"></i>
             <span>屏蔽词</span>
         </div>`;
@@ -71,16 +116,16 @@ function createInputWandButton() {
     );
 }
 
-// 创建主弹窗 (不再依赖轮询注入)
+// 弹窗去掉了“复制按钮”和“代码框”
 function createPopup() {
     const popupHtml = `
         <div id="bl-helper-popup" class="bl-helper-popup">
             <button id="bl-helper-popup-close-icon" class="bl-helper-popup-close-icon">&times;</button>
             
-            <h3 class="bl-helper-popup-title"><i class="fa-solid fa-ban"></i> 屏蔽词生成器</h3>
+            <h3 class="bl-helper-popup-title"><i class="fa-solid fa-ban"></i> 自动屏蔽词管家</h3>
             
             <div class="bl-helper-section">
-                <label class="bl-helper-label">添加你想屏蔽的词语：</label>
+                <label class="bl-helper-label">添加你想屏蔽的词语 (AI说到此词将被自动替换为***)：</label>
                 <div style="display:flex; gap:10px;">
                     <input type="text" id="bl-new-word" class="bl-input" placeholder="输入词语...">
                     <button id="bl-add-word-btn" class="bl-helper-btn" style="background:var(--SmartThemeQuoteColor); color:white;">添加</button>
@@ -92,15 +137,8 @@ function createPopup() {
                 <div id="bl-words-container" class="bl-words-list"></div>
             </div>
 
-            <div class="bl-helper-section">
-                <label class="bl-helper-label">自动生成的正则 (直接复制)：</label>
-                <textarea id="bl-regex-output" class="bl-textarea" readonly></textarea>
-            </div>
-
-            <div class="bl-helper-popup-footer">
-                <button id="bl-copy-btn" class="bl-helper-btn" style="width:100%;">
-                    <i class="fa-solid fa-copy"></i> 复制正则表达式
-                </button>
+            <div class="bl-sync-text">
+                <i class="fa-solid fa-bolt"></i> 屏蔽规则已与系统正则全自动实时同步
             </div>
         </div>`;
     $('body').append(popupHtml);
@@ -110,18 +148,15 @@ function createPopup() {
 function renderWords() {
     const words = extension_settings[extensionName].bannedWords || [];
     const container = $('#bl-words-container');
-    const regexOutput = $('#bl-regex-output');
 
     if (words.length === 0) {
-        container.html('<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; margin-top:10px;">暂无屏蔽词</div>');
-        regexOutput.val('');
+        container.html('<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; margin-top:10px;">黑名单为空，已暂停拦截</div>');
     } else {
         container.html(words.map((w, index) => `
             <div class="bl-word-tag">
                 ${w} <span class="del-btn" data-index="${index}">&times;</span>
             </div>
         `).join(''));
-        regexOutput.val(`/(${words.join('|')})/g`);
     }
 }
 
@@ -146,8 +181,9 @@ function setupEventListeners() {
         if (word && !wordsList.includes(word)) {
             wordsList.push(word);
             $('#bl-new-word').val('');
-            saveSettingsDebounced(); // 调用官方接口保存
-            renderWords();
+            saveSettingsDebounced(); // 存档
+            syncToNativeRegex();     // 同步到正则引擎
+            renderWords();           // 刷新UI
         } else if (wordsList.includes(word)) {
             if (typeof toastr !== 'undefined') toastr.warning('该词已存在！');
         }
@@ -160,20 +196,13 @@ function setupEventListeners() {
     $('#bl-words-container').on('click', '.del-btn', function() {
         const index = $(this).data('index');
         extension_settings[extensionName].bannedWords.splice(index, 1);
-        saveSettingsDebounced(); // 调用官方接口保存
-        renderWords();
-    });
-
-    $('#bl-copy-btn').on('click', function() {
-        const ta = document.getElementById('bl-regex-output');
-        if (!ta.value) return;
-        ta.select();
-        document.execCommand('copy');
-        if (typeof toastr !== 'undefined') toastr.success('复制成功！');
+        saveSettingsDebounced(); // 存档
+        syncToNativeRegex();     // 同步到正则引擎
+        renderWords();           // 刷新UI
     });
 }
 
-// --- 扩展入口 ---
+// 严谨的官方初始化加载
 jQuery(async () => {
     let isInitialized = false;
     const initializeExtension = () => {
@@ -182,9 +211,9 @@ jQuery(async () => {
         
         loadSettings();
         createUI();
+        syncToNativeRegex(); // 启动时自动同步一次规则，防止失效
     };
 
-    // 官方事件总线监听
     if (typeof eventSource !== 'undefined' && typeof event_types !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, initializeExtension);
     } else {
