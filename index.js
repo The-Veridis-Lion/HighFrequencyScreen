@@ -1,150 +1,131 @@
 (function () {
-    const extensionName = "freq_regex_helper";
+    const extensionName = "blacklist-regex-helper";
+    
+    // 从本地缓存读取黑名单，如果没有就给几个默认例子
+    let bannedWords = JSON.parse(localStorage.getItem('stx_banned_words')) || ["极度", "极其", "病态"];
 
-    // --- 1. 核心分析逻辑 (Intl 原生分词) ---
-    function analyzeFrequency() {
-        const chat = window.chat || (typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext().chat : []);
-        // 过滤：非系统消息、未隐藏
-        const visibleText = chat.filter(m => !m.hidden && !m.is_system && m.mes).map(m => m.mes).join('\n');
-        
-        const container = document.getElementById('freq-words-container');
-        if (!visibleText) {
-            container.innerHTML = '<div style="text-align:center; color:var(--freq-text-secondary); padding:10px;">当前可见对话没有足够的文本...</div>';
-            return;
-        }
+    // --- 1. 核心逻辑：渲染 UI 与生成正则 ---
+    function renderBlacklist() {
+        const container = document.getElementById('bl-words-container');
+        const regexInput = document.getElementById('bl-regex-input');
+        if (!container || !regexInput) return;
 
-        const freqMap = {};
-        if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-            const segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' });
-            for (const { segment, isWordLike } of segmenter.segment(visibleText)) {
-                // 确保是词语、长度 >= 2、且不是纯数字
-                if (isWordLike && segment.length >= 2 && !/^\d+$/.test(segment)) {
-                    freqMap[segment] = (freqMap[segment] || 0) + 1;
-                }
-            }
+        // 保存到本地
+        localStorage.setItem('stx_banned_words', JSON.stringify(bannedWords));
+
+        // 渲染词汇标签
+        if (bannedWords.length === 0) {
+            container.innerHTML = '<div style="opacity:0.5; font-size:12px; width:100%; text-align:center;">还没有添加任何屏蔽词</div>';
+            regexInput.value = '';
         } else {
-            const words = visibleText.match(/[a-zA-Z\u4e00-\u9fa5]{2,}/g) || [];
-            words.forEach(w => freqMap[w] = (freqMap[w] || 0) + 1);
+            container.innerHTML = bannedWords.map((w, index) => `
+                <div class="bl-word-tag">
+                    ${w} <span class="del-btn" data-index="${index}">&times;</span>
+                </div>
+            `).join('');
+            
+            // 自动生成高亮正则格式
+            regexInput.value = `/(${bannedWords.join('|')})/g`;
         }
-        
-        const sortedFreq = Object.entries(freqMap).sort((a, b) => b[1] - a[1]).slice(0, 30);
-        
-        if (sortedFreq.length === 0) {
-            container.innerHTML = '<div style="text-align:center; color:var(--freq-text-secondary); padding:10px;">未提取到有效的高频词。</div>';
-            return;
-        }
+    }
 
-        container.innerHTML = sortedFreq.map(([w, c]) => `
-            <div class="freq-word-tag" onclick="const ta = document.getElementById('freq-regex-input'); ta.value += '|${w}';">
-                ${w}<span>${c}</span>
+    // --- 2. 初始化弹窗 DOM ---
+    function initModal() {
+        if ($('#bl-helper-popup').length) return;
+        const popupHtml = `
+        <div id="bl-helper-popup">
+            <div class="bl-popup-header">
+                <div class="bl-popup-title"><i class="fa-solid fa-ban"></i> 屏蔽词正则生成器</div>
+                <button id="bl-close-btn" class="bl-close-btn">&times;</button>
             </div>
-        `).join('');
+            
+            <div class="bl-input-group">
+                <input type="text" id="bl-new-word" class="bl-input" placeholder="输入不想看到的词 (如: 极度)">
+                <button id="bl-add-word-btn" class="bl-add-btn">添加</button>
+            </div>
+
+            <div style="font-size:12px; opacity:0.8; margin-bottom:5px;">当前黑名单词汇 (点击 x 删除)：</div>
+            <div id="bl-words-container"></div>
+            
+            <div style="font-size:12px; margin-bottom:5px;">自动生成的正则预览：</div>
+            <textarea id="bl-regex-input" class="bl-textarea" readonly></textarea>
+            
+            <button id="bl-copy-regex" class="bl-copy-btn"><i class="fa-solid fa-copy"></i> 复制正则表达式</button>
+        </div>`;
+        $('body').append(popupHtml);
+        renderBlacklist(); // 初次渲染
     }
 
-    // --- 2. 弹窗居中函数 (直接借用隐藏助手的逻辑) ---
-    function centerPopup($popup) {
-        if (!$popup || $popup.length === 0 || $popup.is(':hidden')) return;
-        const top = Math.max(10, ($(window).height() - $popup.outerHeight()) / 2);
-        const left = Math.max(10, ($(window).width() - $popup.outerWidth()) / 2);
-        $popup.css({ top: `${top}px`, left: `${left}px`, transform: 'none' });
-    }
-
-    // --- 3. UI 初始化与注入 ---
-    function createUI() {
-        // A. 注入到魔法棒容器 (像隐藏助手一样)
-        if ($('#data_bank_wand_container').length && !$('#freq-helper-wand-button').length) {
-            const wandBtn = `
-                <div id="freq-helper-wand-button" title="打开词频与正则助手">
-                    <i class="fa-solid fa-chart-line"></i>
-                    <span>词频助手</span>
-                </div>`;
-            $('#data_bank_wand_container').append(wandBtn);
-        }
-
-        // B. 注入到侧边扩展栏
+    // --- 3. 强力注入菜单入口 (免疫菜单刷新) ---
+    function injectMenuButton() {
         const targetMenu = $('#extensions_settings .list-group, .extensions-menu').first();
-        if (targetMenu.length > 0 && !$('#freq-native-list-btn').length) {
-            const listBtn = `
-                <div id="freq-native-list-btn" class="list-group-item interactable" title="分析对话词频">
-                    <i class="fa-solid fa-chart-line" style="margin-right: 8px; width: 20px; text-align: center;"></i>
-                    <span class="drawer-item-text">词频助手</span>
-                </div>`;
-            targetMenu.prepend(listBtn);
-        }
-
-        // C. 生成弹窗 HTML (使用从隐藏助手复刻的 CSS 类)
-        if (!$('#freq-helper-popup').length) {
-            const popupHtml = `
-            <div id="freq-helper-popup" class="freq-helper-popup">
-                <button id="freq-helper-popup-close-icon" class="freq-popup-close-icon">&times;</button>
-                <div class="freq-popup-title">
-                    <i class="fa-solid fa-broom"></i> 词频分析与正则
-                </div>
-                
-                <div class="freq-helper-section">
-                    <p class="freq-helper-label">点击下方高频词，快速加入正则规则：</p>
-                    <div id="freq-words-container">加载中...</div>
-                </div>
-
-                <div class="freq-helper-section">
-                    <p class="freq-helper-label">正则预览区 (可手动修改)：</p>
-                    <textarea id="freq-regex-input">/(极度|极其</textarea>
-                </div>
-
-                <div class="freq-helper-popup-footer">
-                    <button id="freq-copy-regex" class="freq-helper-btn">
-                        <i class="fa-solid fa-copy"></i> 复制正则表达式
-                    </button>
-                </div>
+        if (targetMenu.length > 0 && !$('#bl-native-btn').length) {
+            const btnHtml = `
+            <div id="bl-native-btn" class="list-group-item interactable" title="手动管理屏蔽词汇">
+                <i class="fa-solid fa-ban" style="margin-right: 8px; width: 20px; text-align: center;"></i>
+                <span class="drawer-item-text">屏蔽词管理</span>
             </div>`;
-            $('body').append(popupHtml);
+            targetMenu.prepend(btnHtml);
         }
     }
 
-    // --- 4. 事件绑定 ---
-    function bindEvents() {
-        // 点击入口按钮打开弹窗
-        $(document).off('click', '#freq-helper-wand-button, #freq-native-list-btn').on('click', '#freq-helper-wand-button, #freq-native-list-btn', function(e) {
-            e.stopPropagation();
-            analyzeFrequency();
-            const $popup = $('#freq-helper-popup');
-            $popup.show(); // 使用 show 配合 CSS 的 fadeIn 动画
-            centerPopup($popup);
-            $(window).off('resize.freqHelper').on('resize.freqHelper', () => centerPopup($popup));
-        });
+    // --- 4. 绑定事件 (绝对防卡死的全局事件代理) ---
+    // 这种写法将事件绑定在 document 上，无论按钮被重绘多少次，只要 ID 匹配就绝对能点开！
+    $(document).on('click', '#bl-native-btn', function(e) {
+        e.stopPropagation(); // 阻止抽屉自动收起
+        $('#bl-helper-popup').fadeIn(150);
+        renderBlacklist();
+    });
 
-        // 关闭弹窗
-        $(document).off('click', '#freq-helper-popup-close-icon').on('click', '#freq-helper-popup-close-icon', function() {
-            $('#freq-helper-popup').hide();
-            $(window).off('resize.freqHelper');
-        });
+    $(document).on('click', '#bl-close-btn', function() {
+        $('#bl-helper-popup').fadeOut(150);
+    });
 
-        // 复制正则
-        $(document).off('click', '#freq-copy-regex').on('click', '#freq-copy-regex', function() {
-            const ta = document.getElementById('freq-regex-input');
-            if (!ta.value.endsWith(')')) ta.value += ')/g';
-            ta.select();
-            document.execCommand('copy');
-            if (typeof toastr !== 'undefined') toastr.success('正则复制成功！');
-        });
-    }
-
-    // --- 5. 启动总线 ---
-    function initExtension() {
-        createUI();
-        bindEvents();
-        // 轮询保护：防止侧边栏重绘导致按钮消失
-        setInterval(createUI, 1000); 
-    }
-
-    // 监听原生 appReady 事件
-    jQuery(async () => {
-        if (typeof eventSource !== 'undefined' && typeof event_types !== 'undefined' && event_types.APP_READY) {
-            eventSource.on(event_types.APP_READY, initExtension);
-            if (document.getElementById('send_textarea')) initExtension();
-        } else {
-            setTimeout(initExtension, 2000);
+    // 添加词汇逻辑 (点击添加按钮)
+    $(document).on('click', '#bl-add-word-btn', function() {
+        const input = document.getElementById('bl-new-word');
+        const word = input.value.trim();
+        if (word && !bannedWords.includes(word)) {
+            bannedWords.push(word);
+            input.value = '';
+            renderBlacklist();
+        } else if (bannedWords.includes(word)) {
+            if (typeof toastr !== 'undefined') toastr.warning('该词已经在黑名单中了！');
         }
     });
 
+    // 添加词汇逻辑 (按回车键)
+    $(document).on('keypress', '#bl-new-word', function(e) {
+        if (e.which === 13) $('#bl-add-word-btn').click();
+    });
+
+    // 删除词汇逻辑
+    $(document).on('click', '.bl-word-tag .del-btn', function() {
+        const index = $(this).data('index');
+        bannedWords.splice(index, 1);
+        renderBlacklist();
+    });
+
+    // 复制正则
+    $(document).on('click', '#bl-copy-regex', function() {
+        const ta = document.getElementById('bl-regex-input');
+        if (!ta.value) return;
+        ta.select();
+        document.execCommand('copy');
+        if (typeof toastr !== 'undefined') toastr.success('复制成功！快去替换工具里粘贴吧。');
+    });
+
+    // --- 5. 启动流程 ---
+    function bootStrap() {
+        initModal();
+        setInterval(injectMenuButton, 1000); // 只负责补回按钮，不再重复绑定事件
+    }
+
+    // 监听酒馆核心启动事件
+    if (typeof eventSource !== 'undefined' && event_types && event_types.APP_READY) {
+        eventSource.on(event_types.APP_READY, bootStrap);
+        if (document.getElementById('send_textarea')) bootStrap();
+    } else {
+        setTimeout(bootStrap, 2000);
+    }
 })();
