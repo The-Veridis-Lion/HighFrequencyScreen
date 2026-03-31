@@ -13,12 +13,13 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 2. 物理净化：内存数据同步切除
+// 2. 全局净化：物理切除数据层及显示层
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
 
     let chatChanged = false;
+    // 修改内存数据，确保 AI 抓取不到历史
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach(msg => {
             if (msg.mes && regex.test(msg.mes)) {
@@ -29,6 +30,7 @@ function performGlobalCleanse() {
     }
     if (chatChanged) saveChat(); 
 
+    // 抹除屏幕上可见的消息文本
     $('.mes_text').each(function() {
         const html = $(this).html();
         if (regex.test(html)) $(this).html(html.replace(regex, ''));
@@ -40,12 +42,14 @@ function initEditInterceptor() {
     const observer = new MutationObserver(() => {
         const regex = getPurifyRegex();
         if (!regex) return;
+        // 监控编辑框，确保一打开就是干净的
         $('.edit_textarea').each(function() {
             if (regex.test(this.value)) this.value = this.value.replace(regex, '');
         });
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
+    // 监听实时输入
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
@@ -90,16 +94,18 @@ function bindEvents() {
         }
     });
 
-    // --- 核心修复：移除 location.reload()，实现不刷新删除 ---
     $(document).on('click', '.bl-tag span', function() {
         const index = $(this).data('index');
-        // 从数组中删除
         extension_settings[extensionName].bannedWords.splice(index, 1);
-        // 保存并立即刷新弹窗内的标签列表
         saveSettingsDebounced();
         renderTags();
-        // 注意：由于之前的文字已经物理抹除，已消失的字在不刷新的情况下不会立刻回来，
-        // 但此后的新消息和新操作将不再受该屏蔽词影响。
+        // 不执行刷新，仅更新列表
+    });
+
+    // --- 核心修复：监听编辑完成事件 ---
+    // 当点击保存编辑后，延迟 100ms 执行清洗，确保 DOM 更新后再扣除文字
+    eventSource.on(event_types.MESSAGE_EDITED, () => {
+        setTimeout(performGlobalCleanse, 100);
     });
 
     eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
