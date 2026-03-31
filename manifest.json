@@ -1,11 +1,11 @@
 {
-    "display_name": "高频顽固词汇屏蔽助手",
+    "display_name": "屏蔽词正则生成器",
     "loading_order": 15,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "The-Veridis-Lion",
+    "author": "Assistant",
     "version": "1.0.0",
-    "description": "分析可见对话词频，辅助生成正则表达式。"
+    "description": "手动管理不想看到的词汇，一键生成屏蔽正则表达式。"
 }
