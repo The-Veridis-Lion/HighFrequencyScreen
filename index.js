@@ -1,156 +1,94 @@
-// 严格保留官方模块导入
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const extensionName = "direct_content_filter";
+const extensionName = "direct_remover";
+const defaultSettings = { bannedWords: ["极度", "极其", "病态"] };
 
-const defaultSettings = {
-    bannedWords: ["极度", "极其", "病态"]
-};
-
-// 弹窗居中函数 (复刻 hide 扩展逻辑)
-function centerPopup($popup) {
-    if (!$popup || $popup.length === 0 || $popup.is(':hidden')) return;
-    const windowWidth = $(window).width();
-    const windowHeight = $(window).height();
-    const popupWidth = $popup.outerWidth();
-    const popupHeight = $popup.outerHeight();
-    const top = Math.max(10, (windowHeight - popupHeight) / 2);
-    const left = Math.max(10, (windowWidth - popupWidth) / 2);
-    $popup.css({ top: `${top}px`, left: `${left}px`, transform: 'none' });
-}
-
-// 核心功能：对单条消息进行文本清洗
-function cleanMessageElement(mesElement) {
-    if (!mesElement) return;
+// 核心：直接从文本中扣掉那些词
+function removeBannedWords() {
     const words = extension_settings[extensionName].bannedWords;
     if (!words || words.length === 0) return;
 
-    // 构造临时正则（仅用于本次内存查找）
-    const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const regex = new RegExp(`(${escapedWords.join('|')})`, 'g');
-
-    // 深度遍历消息内的所有文本节点
-    const walker = document.createTreeWalker(mesElement, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while (node = walker.nextNode()) {
-        if (regex.test(node.nodeValue)) {
-            // 直接在内存中替换掉，不留痕迹
-            node.nodeValue = node.nodeValue.replace(regex, "");
+    const regex = new RegExp(`(${words.join('|')})`, 'g');
+    
+    // 扫描所有聊天消息文本
+    $('.mes_text').each(function() {
+        const html = $(this).html();
+        if (regex.test(html)) {
+            // 直接用空字符串替换掉
+            const newHtml = html.replace(regex, '');
+            $(this).html(newHtml);
         }
-    }
+    });
 }
 
-// 全量扫描当前聊天框
-function cleanAllVisibleMessages() {
-    console.log(`[${extensionName}] 正在全量清洗消息...`);
-    const messages = document.querySelectorAll('.mes_text');
-    messages.forEach(mes => cleanMessageElement(mes));
-}
-
-// UI 注入代码
 function createUI() {
-    if ($('#bl-helper-settings').length > 0) return;
-
-    const settingsHtml = `
-    <div id="bl-helper-settings" class="hide-helper-container">
-        <div class="inline-drawer">
-            <div class="inline-drawer-toggle inline-drawer-header interactable">
-                <b>🚫 屏蔽词过滤 (实时生效版)</b>
-                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-            </div>
-            <div class="inline-drawer-content" style="padding:10px;">
-                <button id="bl-drawer-open-btn" class="menu_button" style="width:100%;">
-                    打开词库管理面板
-                </button>
-            </div>
-        </div>
-    </div>`;
-    $("#extensions_settings").append(settingsHtml);
-
-    // 注入魔法棒按钮
-    $('#bl-helper-wand-button').remove();
-    $('#data_bank_wand_container').append(`
-        <div id="bl-helper-wand-button" title="屏蔽词管理" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer;">
-            <i class="fa-solid fa-ban"></i>
-            <span>屏蔽词</span>
-        </div>`);
-
-    // 创建弹窗
-    if (!$('#bl-helper-popup').length) {
-        $('body').append(`
-            <div id="bl-helper-popup" class="bl-helper-popup">
-                <button id="bl-popup-close-icon" class="bl-popup-close-icon">&times;</button>
-                <h3 class="bl-helper-popup-title">屏蔽词实时过滤</h3>
-                <div style="display:flex; gap:10px; margin-bottom:15px;">
-                    <input type="text" id="bl-new-word" class="bl-input" placeholder="输入屏蔽词...">
-                    <button id="bl-add-word-btn" class="bl-helper-btn">添加</button>
-                </div>
-                <div id="bl-words-container" class="bl-words-list"></div>
-                <div style="color:#4ade80; font-size:12px; text-align:center; margin-top:10px;">
-                    <i class="fa-solid fa-bolt"></i> 无需正则，添加后实时从界面抹除
-                </div>
+    // 注入魔法棒入口
+    if (!$('#bl-wand-btn').length) {
+        $('#data_bank_wand_container').append(`
+            <div id="bl-wand-btn" title="屏蔽词管理" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer;">
+                <i class="fa-solid fa-ban"></i><span>屏蔽词</span>
             </div>`);
     }
 
-    // 绑定事件
-    $('#bl-helper-wand-button, #bl-drawer-open-btn').on('click', function() {
+    // 弹窗 HTML
+    if (!$('#bl-popup').length) {
+        $('body').append(`
+            <div id="bl-popup" class="bl-helper-popup">
+                <span id="bl-close" class="bl-popup-close-icon">&times;</span>
+                <h3 style="margin-top:0">物理抹除屏蔽词</h3>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="bl-input" style="flex:1; padding:5px; background:rgba(0,0,0,0.3); border:1px solid #555; color:white;" placeholder="输入屏蔽词...">
+                    <button id="bl-add" class="menu_button">添加</button>
+                </div>
+                <div id="bl-list" class="bl-words-list"></div>
+                <div style="font-size:11px; color:#4ade80;">* 添加后词汇将直接从消息中移除。</div>
+            </div>`);
+    }
+
+    // 事件绑定
+    $('#bl-wand-btn').on('click', () => {
         renderWords();
-        $('#bl-helper-popup').show();
-        centerPopup($('#bl-helper-popup'));
+        $('#bl-popup').show();
     });
-
-    $('#bl-popup-close-icon').on('click', () => $('#bl-helper-popup').hide());
-
-    $('#bl-add-word-btn').on('click', function() {
-        const word = $('#bl-new-word').val().trim();
-        if (word && !extension_settings[extensionName].bannedWords.includes(word)) {
-            extension_settings[extensionName].bannedWords.push(word);
-            $('#bl-new-word').val('');
+    $('#bl-close').on('click', () => $('#bl-popup').hide());
+    $('#bl-add').on('click', () => {
+        const val = $('#bl-input').val().trim();
+        if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
+            extension_settings[extensionName].bannedWords.push(val);
+            $('#bl-input').val('');
             saveSettingsDebounced();
             renderWords();
-            cleanAllVisibleMessages(); // 添加词后立即清洗全场
+            removeBannedWords(); // 立即执行一次抹除
         }
     });
-
-    $('#bl-words-container').on('click', '.del-btn', function() {
-        const index = $(this).data('index');
-        extension_settings[extensionName].bannedWords.splice(index, 1);
+    $('#bl-list').on('click', '.bl-del-btn', function() {
+        const idx = $(this).data('index');
+        extension_settings[extensionName].bannedWords.splice(idx, 1);
         saveSettingsDebounced();
         renderWords();
-        // 删除词后，酒馆会自动重绘消息，所以不用特殊处理
+        location.reload(); // 删除词汇后刷新页面恢复显示
     });
 }
 
 function renderWords() {
     const words = extension_settings[extensionName].bannedWords || [];
-    $('#bl-words-container').html(words.map((w, i) => `
-        <div class="bl-word-tag">${w}<span class="del-btn" data-index="${i}">&times;</span></div>
-    `).join('') || '词库为空');
+    $('#bl-list').html(words.map((w, i) => `<div class="bl-word-tag">${w}<span class="bl-del-btn" data-index="${i}">&times;</span></div>`).join(''));
 }
 
-// --- 初始化与监听 ---
-jQuery(async () => {
+// 初始化
+jQuery(() => {
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
     
-    const init = () => {
+    const boot = () => {
         createUI();
-        cleanAllVisibleMessages();
-        
-        // 核心：监听每条消息的生成事件
-        eventSource.on(event_types.MESSAGE_RECEIVED, () => {
-            setTimeout(cleanAllVisibleMessages, 50); // AI开始说话时清洗
-        });
-        
-        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (mesId) => {
-            // 当某条消息渲染完成时，针对性清洗
-            const mesElem = document.querySelector(`.mes[mesid="${mesId}"] .mes_text`);
-            cleanMessageElement(mesElem);
-        });
+        removeBannedWords();
+        // 监听消息生成，每秒强制清洗一次，确保“极度”这类词一露头就消失
+        setInterval(removeBannedWords, 500); 
     };
 
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
-        eventSource.on(event_types.APP_READY, init);
-        if (document.getElementById('send_textarea')) init();
+        eventSource.on(event_types.APP_READY, boot);
+        if (document.getElementById('send_textarea')) boot();
     }
 });
