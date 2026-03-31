@@ -4,7 +4,7 @@ import { saveSettingsDebounced, eventSource, event_types, saveChat } from "../..
 const extensionName = "ultimate_purifier";
 const defaultSettings = { bannedWords: [] };
 
-// 逻辑：长词优先正则
+// 1. 获取正则对象：长词优先逻辑
 function getPurifyRegex() {
     const words = extension_settings[extensionName]?.bannedWords || [];
     if (!words.length) return null;
@@ -13,7 +13,7 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 核心净化：切除内存、存档、屏幕显示
+// 2. 物理净化：内存数据同步切除
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -27,7 +27,7 @@ function performGlobalCleanse() {
             }
         });
     }
-    if (chatChanged) saveChat(); // 物理切断 AI 记忆抓取
+    if (chatChanged) saveChat(); 
 
     $('.mes_text').each(function() {
         const html = $(this).html();
@@ -35,7 +35,7 @@ function performGlobalCleanse() {
     });
 }
 
-// 拦截编辑框 (小铅笔) 弹窗残留
+// 3. 拦截编辑框 (小铅笔) 弹窗残留
 function initEditInterceptor() {
     const observer = new MutationObserver(() => {
         const regex = getPurifyRegex();
@@ -59,14 +59,12 @@ function initEditInterceptor() {
 }
 
 function setupUI() {
-    // 注入快捷按钮：修正对齐并修改文案为“屏蔽词汇”
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
             <div id="bl-wand-btn" title="屏蔽词汇">
-                <i class="fa-solid fa-eraser"></i><span>屏蔽词汇</span>
+                <i class="fa-solid fa-eraser fa-fw"></i><span>屏蔽词汇</span>
             </div>`);
     }
-    // 注入弹窗
     if (!$('#bl-purifier-popup').length) {
         $('body').append(`
             <div id="bl-purifier-popup">
@@ -80,6 +78,7 @@ function setupUI() {
 function bindEvents() {
     $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
+    
     $(document).on('click', '#bl-add-btn', () => {
         const val = $('#bl-input-field').val().trim();
         if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
@@ -90,12 +89,19 @@ function bindEvents() {
             performGlobalCleanse(); 
         }
     });
+
+    // --- 核心修复：移除 location.reload()，实现不刷新删除 ---
     $(document).on('click', '.bl-tag span', function() {
-        extension_settings[extensionName].bannedWords.splice($(this).data('index'), 1);
+        const index = $(this).data('index');
+        // 从数组中删除
+        extension_settings[extensionName].bannedWords.splice(index, 1);
+        // 保存并立即刷新弹窗内的标签列表
         saveSettingsDebounced();
         renderTags();
-        location.reload(); 
+        // 注意：由于之前的文字已经物理抹除，已消失的字在不刷新的情况下不会立刻回来，
+        // 但此后的新消息和新操作将不再受该屏蔽词影响。
     });
+
     eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
     eventSource.on(event_types.CHAT_CHANGED, performGlobalCleanse);
 }
