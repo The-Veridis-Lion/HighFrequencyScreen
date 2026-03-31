@@ -1,11 +1,11 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types, saveChat } from "../../../../script.js";
 
-const extensionName = "purifier_logic";
+const extensionName = "ultimate_purifier";
 const defaultSettings = { bannedWords: [] };
 
-// 生成正则：长词优先算法
-function getRegex() {
+// 1. 获取正则对象：采用长词优先排序，防止短词干扰
+function getPurifyRegex() {
     const words = extension_settings[extensionName]?.bannedWords || [];
     if (!words.length) return null;
     const sorted = [...words].sort((a, b) => b.length - a.length);
@@ -13,72 +13,71 @@ function getRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 核心净化：物理切除内存数据与 DOM
-function performCleanse() {
-    const regex = getRegex();
+// 2. 物理净化：同时切除内存、存档和当前显示
+function performGlobalCleanse() {
+    const regex = getPurifyRegex();
     if (!regex) return;
 
-    let changed = false;
-
-    // 1. 切除内存数据 (解决编辑框残留，切断 AI 记忆)
+    let chatChanged = false;
+    // 切除内存数据 (让小铅笔编辑时也没词)
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach(msg => {
             if (msg.mes && regex.test(msg.mes)) {
                 msg.mes = msg.mes.replace(regex, '');
-                changed = true;
+                chatChanged = true;
             }
         });
     }
+    // 强制存档，切断 AI 记忆抓取的后路
+    if (chatChanged) saveChat();
 
-    if (changed) saveChat(); // 物理保存到 JSON 存档
-
-    // 2. 净化屏幕显示
+    // 净化当前页面上可见的文字
     $('.mes_text').each(function() {
         const html = $(this).html();
         if (regex.test(html)) $(this).html(html.replace(regex, ''));
     });
 }
 
-// 实时监听：物理切除编辑框输入
-function initInputInterceptor() {
-    document.addEventListener('input', (e) => {
-        const regex = getRegex();
+// 3. 强力监控：捕获编辑框 (小铅笔) 弹出的瞬间并立即清洗
+function initEditInterceptor() {
+    // 监控 DOM 变化：当编辑框出现时立即处理内容
+    const observer = new MutationObserver(() => {
+        const regex = getPurifyRegex();
         if (!regex) return;
-        const el = e.target;
-        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-            if (regex.test(el.value)) {
-                const pos = el.selectionStart;
-                el.value = el.value.replace(regex, '');
-                el.selectionStart = el.selectionEnd = pos;
+        // 针对酒馆编辑器的文本区域进行实时清洗
+        $('.edit_textarea').each(function() {
+            if (regex.test(this.value)) {
+                this.value = this.value.replace(regex, '');
+            }
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // 监听实时输入 (防止用户手动输入被屏蔽词)
+    document.addEventListener('input', (e) => {
+        const regex = getPurifyRegex();
+        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            if (regex.test(e.target.value)) {
+                const pos = e.target.selectionStart;
+                e.target.value = e.target.value.replace(regex, '');
+                e.target.selectionStart = e.target.selectionEnd = pos;
             }
         }
     }, true);
 }
 
 function setupUI() {
-    // 注入快捷按钮
     if (!$('#bl-wand-btn').length) {
-        $('#data_bank_wand_container').append(`<div id="bl-wand-btn" title="净化器" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; color:var(--text-secondary);"><i class="fa-solid fa-eraser"></i><span>净化</span></div>`);
+        $('#data_bank_wand_container').append(`<div id="bl-wand-btn" title="净化器" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer;"><i class="fa-solid fa-eraser"></i><span>净化</span></div>`);
     }
-    // 注入菜单入口
-    if (!$('#bl-menu-item').length) {
-        $("#extensions_settings").append(`<div id="bl-menu-item" class="hide-helper-container"><div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header interactable"><b>🚫 屏蔽词净化</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="padding:10px; display:none;"><button id="bl-open-popup" class="menu_button" style="width:100%;">管理词库</button></div></div></div>`);
-    }
-    // 注入悬浮窗
     if (!$('#bl-purifier-popup').length) {
-        $('body').append(`<div id="bl-purifier-popup"><div class="bl-header"><h3 class="bl-title">净化管理</h3><button id="bl-close-btn" class="bl-close">&times;</button></div><div class="bl-input-group"><input type="text" id="bl-input-field" class="bl-input" placeholder="输入屏蔽词..."><button id="bl-add-btn" class="bl-add-btn">添加</button></div><div id="bl-tags-container"></div></div>`);
+        $('body').append(`<div id="bl-purifier-popup"><div class="bl-header"><h3 class="bl-title">屏蔽词净化</h3><button id="bl-close-btn" class="bl-close">&times;</button></div><div class="bl-input-group"><input type="text" id="bl-input-field" class="bl-input" placeholder="输入屏蔽词..."><button id="bl-add-btn" class="bl-add-btn">净化</button></div><div id="bl-tags-container"></div></div>`);
     }
 }
 
 function bindEvents() {
-    const popup = $('#bl-purifier-popup');
-    $(document).on('click', '#bl-wand-btn, #bl-open-popup', () => { renderTags(); popup.fadeIn(200); });
-    $(document).on('click', '#bl-close-btn', () => popup.fadeOut(200));
-    $(document).on('click', '#bl-menu-item .inline-drawer-toggle', function() {
-        $(this).next('.inline-drawer-content').slideToggle(200);
-        $(this).find('.inline-drawer-icon').toggleClass('down up');
-    });
-
+    $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
+    $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
     $(document).on('click', '#bl-add-btn', () => {
         const val = $('#bl-input-field').val().trim();
         if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
@@ -86,21 +85,18 @@ function bindEvents() {
             $('#bl-input-field').val('');
             saveSettingsDebounced();
             renderTags();
-            performCleanse(); 
+            performGlobalCleanse(); 
         }
     });
-
     $(document).on('click', '.bl-tag span', function() {
         extension_settings[extensionName].bannedWords.splice($(this).data('index'), 1);
         saveSettingsDebounced();
         renderTags();
         location.reload(); 
     });
-
-    // 事件驱动打击
-    eventSource.on(event_types.GENERATION_ENDED, performCleanse);
-    eventSource.on(event_types.CHAT_CHANGED, performCleanse);
-    eventSource.on(event_types.MESSAGE_EDITED, performCleanse);
+    // 事件驱动：消息结束或切换时清洗
+    eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
+    eventSource.on(event_types.CHAT_CHANGED, performGlobalCleanse);
 }
 
 function renderTags() {
@@ -113,8 +109,8 @@ jQuery(() => {
     const boot = () => {
         setupUI();
         bindEvents();
-        initInputInterceptor();
-        performCleanse(); 
+        initEditInterceptor(); // 核心：启动编辑框实时拦截
+        performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
