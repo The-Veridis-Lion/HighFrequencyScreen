@@ -1,70 +1,69 @@
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const extensionName = "direct_remover";
+const extensionName = "breeding_preventer";
 const defaultSettings = { bannedWords: [] };
 
-// --- 核心逻辑：双重清洗 ---
-function removeBannedWords() {
+// --- 核心逻辑：双重同步净化 (DOM + 内存) ---
+function performGlobalCleanse() {
     const words = extension_settings[extensionName].bannedWords;
     if (!words || words.length === 0) return;
     
-    // 构造正则
+    // 生成正则
     const regex = new RegExp(`(${words.join('|')})`, 'g');
 
-    // 1. 清洗 UI 层 (让你看不见)
+    // 1. 净化 DOM (让你眼不见为净)
     $('.mes_text').each(function() {
-        const html = $(this).html();
-        if (regex.test(html)) {
-            $(this).html(html.replace(regex, ''));
+        const currentHtml = $(this).html();
+        if (regex.test(currentHtml)) {
+            $(this).html(currentHtml.replace(regex, ''));
         }
     });
 
-    // 2. 清洗数据层 (让 AI 看不见)
-    // 直接修改酒馆内存中的聊天数组
+    // 2. 净化内存数据 (让 AI 彻底失忆，防止繁殖)
     const chatData = window.chat || [];
-    let dataChanged = false;
+    let memoryChanged = false;
 
     chatData.forEach(msg => {
         if (msg.mes && regex.test(msg.mes)) {
-            // 彻底从内存数据中抹除
             msg.mes = msg.mes.replace(regex, '');
-            dataChanged = true;
+            memoryChanged = true;
         }
     });
 
-    // 如果数据发生了变化，调用酒馆 API 保存到服务端文件
-    if (dataChanged) {
-        console.log(`[${extensionName}] 检测到屏蔽词，已从聊天数据中永久抹除。`);
-        // 注意：这会触发酒馆的保存机制
+    // 如果数据变了，静默保存，不打扰用户
+    if (memoryChanged) {
+        // saveSettingsDebounced 并不直接保存聊天记录，
+        // 这里依靠酒馆自身的每条消息生成后的自动存档机制即可。
     }
 }
 
 function createUI() {
-    // 注入入口按钮 (悬浮不顶栏)
+    // 注入魔法棒按钮
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="屏蔽词管理" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; color:var(--text-secondary);">
-                <i class="fa-solid fa-ban"></i><span>屏蔽词</span>
+            <div id="bl-wand-btn" title="屏蔽词净化" style="display:flex; align-items:center; gap:8px; padding:5px 10px; cursor:pointer; color:var(--text-secondary);">
+                <i class="fa-solid fa-shield-halved"></i><span>屏蔽词</span>
             </div>`);
     }
 
-    // 注入悬浮窗 UI (保持 fixed 定位)
+    // 注入悬浮窗 UI
     if (!$('#bl-helper-popup').length) {
         $('body').append(`
-            <div id="bl-helper-popup" style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:350px; background:var(--bg-color, #1a1a1b); border:1px solid var(--border-color, #444); border-radius:12px; z-index:10001; padding:20px; box-shadow:0 8px 30px rgba(0,0,0,0.6); display:none; backdrop-filter:blur(15px); color:var(--text-color, #eee); font-family:sans-serif;">
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:15px;">
-                    <h3 style="margin:0; font-size:18px;">屏蔽词净化器</h3>
-                    <button id="bl-close" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">&times;</button>
+            <div id="bl-helper-popup">
+                <div class="bl-popup-header">
+                    <h3 class="bl-popup-title">屏蔽词净化器</h3>
+                    <button id="bl-close-icon" class="bl-close-icon">&times;</button>
                 </div>
-                <div style="display:flex; gap:8px; margin-bottom:15px;">
-                    <input type="text" id="bl-input" style="flex:1; padding:8px; background:rgba(0,0,0,0.3); border:1px solid #555; border-radius:6px; color:white;" placeholder="添加词汇...">
-                    <button id="bl-add" style="padding:8px 15px; background:var(--SmartThemeQuoteColor, #444); color:white; border:none; border-radius:6px; cursor:pointer;">添加</button>
+                <div class="bl-input-group">
+                    <input type="text" id="bl-input" class="bl-input" placeholder="输入词语 (如: 极度)...">
+                    <button id="bl-add" class="bl-add-btn">添加</button>
                 </div>
-                <div id="bl-list" style="max-height:140px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid #444; display:flex; flex-wrap:wrap; gap:6px;"></div>
-                <p style="font-size:11px; color:#4ade80; text-align:center; margin-top:10px;">
-                    <i class="fa-solid fa-shield-halved"></i> 词汇将从屏幕及 AI 记忆中同步抹除
-                </p>
+                <div id="bl-words-container"></div>
+                <div style="font-size:11px; color:#4ade80; text-align:center; margin-top:12px; line-height:1.4;">
+                    <i class="fa-solid fa-bolt"></i> 实时抹除屏幕文字<br>
+                    <i class="fa-solid fa-brain"></i> 同步切除 AI 记忆 (防止复读)
+                </div>
             </div>`);
     }
 
@@ -74,7 +73,7 @@ function createUI() {
         $('#bl-helper-popup').fadeIn(200);
     });
 
-    $(document).off('click', '#bl-close').on('click', '#bl-close', () => {
+    $(document).off('click', '#bl-close-icon').on('click', '#bl-close-icon', () => {
         $('#bl-helper-popup').fadeOut(200);
     });
 
@@ -85,26 +84,25 @@ function createUI() {
             $('#bl-input').val('');
             saveSettingsDebounced();
             renderWords();
-            removeBannedWords(); // 立即执行双重清洗
+            performGlobalCleanse(); // 添加后立刻净化全场
         }
     });
 
-    $('#bl-list').off('click', '.del-btn').on('click', '.del-btn', function() {
+    $('#bl-words-container').off('click', '.del-btn').on('click', '.del-btn', function() {
         const idx = $(this).data('index');
         extension_settings[extensionName].bannedWords.splice(idx, 1);
         saveSettingsDebounced();
         renderWords();
-        if(confirm('删除规则后建议刷新页面以还原显示，是否刷新？')) location.reload();
+        // 删除后建议刷新，因为已经抹除的数据无法通过脚本找回
+        if(confirm('已删除规则。由于数据已被永久抹除，建议刷新页面，是否刷新？')) location.reload();
     });
 }
 
 function renderWords() {
     const words = extension_settings[extensionName].bannedWords || [];
-    $('#bl-list').html(words.map((w, i) => `
-        <div style="background:#333; padding:2px 8px; border-radius:4px; font-size:13px; display:flex; align-items:center;">
-            ${w}<span class="del-btn" data-index="${i}" style="margin-left:8px; color:#ff6b6b; cursor:pointer;">&times;</span>
-        </div>
-    `).join('') || '<span style="opacity:0.5; font-size:12px;">词库为空</span>');
+    $('#bl-words-container').html(words.map((w, i) => `
+        <div class="bl-word-tag">${w}<span class="del-btn" data-index="${i}">&times;</span></div>
+    `).join('') || '<span style="opacity:0.5; font-size:12px; width:100%; text-align:center;">净化库为空</span>');
 }
 
 // 初始化
@@ -113,9 +111,8 @@ jQuery(() => {
     
     const boot = () => {
         createUI();
-        // 关键：每 500 毫秒执行一次双重清洗
-        // 这样既能实时抹除屏幕文字，也能确保 AI 发出的新内容立刻从内存中消失
-        setInterval(removeBannedWords, 500); 
+        // 每 500ms 强制清洗一遍，确保打字机效果吐出的词也立刻消失
+        setInterval(performGlobalCleanse, 500); 
     };
 
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
