@@ -1,11 +1,11 @@
 {
-    "display_name": "屏蔽词正则生成器",
+    "display_name": "自动屏蔽词管家",
     "loading_order": 15,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "Assistant",
+    "author": "The-Veridis-Lion",
     "version": "1.0.0",
-    "description": "手动管理不想看到的词汇，一键生成屏蔽正则表达式。"
+    "description": "基于原生架构的屏蔽词管理，全自动同步至内置正则引擎。"
 }
