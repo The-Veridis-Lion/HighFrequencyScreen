@@ -3,7 +3,7 @@ import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
 const extensionName = "auto_blacklist_helper";
-const REGEX_RULE_ID = "auto_blacklist_generated_rule"; // 我们在正则库里的专属ID
+const REGEX_RULE_NAME = "🚫 自动屏蔽词管家"; // 我们在正则库里的专属名称
 
 const defaultSettings = {
     bannedWords: ["极度", "极其", "病态"]
@@ -31,54 +31,65 @@ function loadSettings() {
 }
 
 // -------------------------------------------------------------
-// 【核心大招】：将屏蔽词全自动写入酒馆底层的正则表达式引擎
+// 【核心修复】：直接写入酒馆真正的全局正则数组 (regex_scripts)
 // -------------------------------------------------------------
 function syncToNativeRegex() {
-    const words = extension_settings[extensionName].bannedWords;
-    
-    if (!extension_settings.regex) {
-        extension_settings.regex = [];
-    }
-
-    let ruleIndex = extension_settings.regex.findIndex(r => r.id === REGEX_RULE_ID);
-    
-    if (words.length === 0) {
-        // 如果黑名单为空，自动停用该正则
-        if (ruleIndex !== -1) extension_settings.regex[ruleIndex].disabled = true;
-    } else {
-        // 转义符号并生成正则
-        const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        const regexStr = `/(${escapedWords.join('|')})/g`;
-
-        const ruleObj = {
-            id: REGEX_RULE_ID,
-            scriptName: "🚫 自动屏蔽词拦截 (由插件管理)",
-            regex: regexStr,
-            replacementStr: "***", // 全自动替换为 ***
-            placement: [1, 2], // 1:处理你发的，2:处理AI发的
-            disabled: false,
-            markdownOnly: false,
-            promptOnly: false,
-            runOnEdit: true,
-            minDepth: null,
-            maxDepth: null
-        };
-
-        if (ruleIndex !== -1) {
-            extension_settings.regex[ruleIndex] = ruleObj;
-        } else {
-            extension_settings.regex.push(ruleObj);
+    try {
+        const words = extension_settings[extensionName].bannedWords;
+        
+        // 检查酒馆真正的全局正则变量是否存在
+        if (!Array.isArray(window.regex_scripts)) {
+            console.warn(`[${extensionName}] 找不到全局正则引擎变量 window.regex_scripts！`);
+            return;
         }
-    }
 
-    saveSettingsDebounced();
-    // 强制酒馆正则引擎热重载，让规则立刻生效！
-    if (typeof window.loadRegex === 'function') {
-        window.loadRegex();
+        // 查找是否已经存在我们的专属规则
+        let ruleIndex = window.regex_scripts.findIndex(r => r.scriptName === REGEX_RULE_NAME);
+        
+        if (words.length === 0) {
+            // 如果黑名单为空，但规则存在，则禁用它
+            if (ruleIndex !== -1) {
+                window.regex_scripts[ruleIndex].disabled = true;
+                if (typeof window.saveRegex === 'function') window.saveRegex();
+            }
+        } else {
+            // 转义符号并生成真正的正则语法
+            const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            const regexStr = `/(${escapedWords.join('|')})/g`;
+
+            const ruleObj = {
+                id: ruleIndex !== -1 ? window.regex_scripts[ruleIndex].id : "bl_" + Date.now(), // 保持原ID或新建
+                scriptName: REGEX_RULE_NAME,
+                regex: regexStr,
+                replacementStr: "", // 替换为空字符串（直接删除该词）
+                placement: [1, 2], // 1:处理用户发送的，2:处理AI发送的
+                disabled: false,
+                markdownOnly: false,
+                promptOnly: false,
+                runOnEdit: true,
+                minDepth: null,
+                maxDepth: null
+            };
+
+            if (ruleIndex !== -1) {
+                // 覆盖更新现有规则
+                window.regex_scripts[ruleIndex] = ruleObj;
+            } else {
+                // 插入新规则
+                window.regex_scripts.push(ruleObj);
+            }
+
+            // 调用酒馆官方的“保存正则”接口，将其写入后端的 regex.json
+            if (typeof window.saveRegex === 'function') {
+                window.saveRegex();
+            }
+        }
+    } catch (e) {
+        console.error(`[${extensionName}] 同步正则失败:`, e);
     }
 }
 
-// UI 注入代码 (完全保留 hide 的注入模式)
+// UI 注入代码
 function createUI() {
     const settingsHtml = `
     <div id="bl-helper-settings" class="hide-helper-container">
@@ -116,7 +127,7 @@ function createInputWandButton() {
     );
 }
 
-// 弹窗去掉了“复制按钮”和“代码框”
+// 弹窗UI
 function createPopup() {
     const popupHtml = `
         <div id="bl-helper-popup" class="bl-helper-popup">
@@ -125,7 +136,7 @@ function createPopup() {
             <h3 class="bl-helper-popup-title"><i class="fa-solid fa-ban"></i> 自动屏蔽词管家</h3>
             
             <div class="bl-helper-section">
-                <label class="bl-helper-label">添加你想屏蔽的词语 (AI说到此词将被自动替换为***)：</label>
+                <label class="bl-helper-label">添加你想屏蔽的词语 (AI说到此词将被直接删除)：</label>
                 <div style="display:flex; gap:10px;">
                     <input type="text" id="bl-new-word" class="bl-input" placeholder="输入词语...">
                     <button id="bl-add-word-btn" class="bl-helper-btn" style="background:var(--SmartThemeQuoteColor); color:white;">添加</button>
@@ -138,7 +149,7 @@ function createPopup() {
             </div>
 
             <div class="bl-sync-text">
-                <i class="fa-solid fa-bolt"></i> 屏蔽规则已与系统正则全自动实时同步
+                <i class="fa-solid fa-check-double"></i> 屏蔽规则已与系统全局正则实时同步
             </div>
         </div>`;
     $('body').append(popupHtml);
@@ -181,8 +192,8 @@ function setupEventListeners() {
         if (word && !wordsList.includes(word)) {
             wordsList.push(word);
             $('#bl-new-word').val('');
-            saveSettingsDebounced(); // 存档
-            syncToNativeRegex();     // 同步到正则引擎
+            saveSettingsDebounced(); // 插件自身设置存档
+            syncToNativeRegex();     // 【触发核心】：更新全局正则引擎！
             renderWords();           // 刷新UI
         } else if (wordsList.includes(word)) {
             if (typeof toastr !== 'undefined') toastr.warning('该词已存在！');
@@ -196,8 +207,8 @@ function setupEventListeners() {
     $('#bl-words-container').on('click', '.del-btn', function() {
         const index = $(this).data('index');
         extension_settings[extensionName].bannedWords.splice(index, 1);
-        saveSettingsDebounced(); // 存档
-        syncToNativeRegex();     // 同步到正则引擎
+        saveSettingsDebounced(); // 插件自身设置存档
+        syncToNativeRegex();     // 【触发核心】：更新全局正则引擎！
         renderWords();           // 刷新UI
     });
 }
@@ -211,7 +222,8 @@ jQuery(async () => {
         
         loadSettings();
         createUI();
-        syncToNativeRegex(); // 启动时自动同步一次规则，防止失效
+        // 启动时自动同步一次规则，防止断层失效
+        setTimeout(syncToNativeRegex, 1000); 
     };
 
     if (typeof eventSource !== 'undefined' && typeof event_types !== 'undefined' && event_types.APP_READY) {
