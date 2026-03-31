@@ -1,11 +1,11 @@
 {
-    "display_name": "屏蔽高频词",
+    "display_name": "屏蔽高频词汇",
     "loading_order": 15,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "Assistant",
-    "version": "2.1.0",
-    "description": "实时抹除屏蔽词，并同步清洗 AI 内存数据防止复读繁殖。"
+    "version": "2.5.0",
+    "description": "物理切除 AI 记忆中的屏蔽词，防止复读繁殖。"
 }
