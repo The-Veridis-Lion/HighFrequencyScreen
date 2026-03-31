@@ -1,6 +1,6 @@
 {
     "name": "freq-regex-helper",
-    "displayName": "词频与正则助手",
+    "display_name": "词频与正则助手",
     "version": "1.0.0",
     "description": "分析可见对话词频，辅助生成正则表达式。",
     "author": "Assistant",
