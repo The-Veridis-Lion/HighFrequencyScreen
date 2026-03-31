@@ -35,7 +35,7 @@ function performGlobalCleanse() {
     });
 }
 
-// 核心：拦截编辑框 (小铅笔) 弹窗残留
+// 拦截编辑框 (小铅笔) 弹窗残留
 function initEditInterceptor() {
     const observer = new MutationObserver(() => {
         const regex = getPurifyRegex();
@@ -59,10 +59,10 @@ function initEditInterceptor() {
 }
 
 function setupUI() {
-    // 注入快捷按钮：修正对齐并修改文案
+    // 注入快捷按钮：修正对齐并修改文案为“屏蔽词汇”
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="屏蔽词汇" style="display:flex; align-items:center; padding:5px 10px; cursor:pointer; color:var(--text-secondary);">
+            <div id="bl-wand-btn" title="屏蔽词汇">
                 <i class="fa-solid fa-eraser"></i><span>屏蔽词汇</span>
             </div>`);
     }
