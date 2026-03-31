@@ -1,36 +1,15 @@
 (function () {
-    const extensionName = "freq-regex-helper";
+    const extensionName = "freq_regex_helper";
 
-    // --- 1. 注入内联样式 (彻底解决路径问题) ---
-    function injectCSS() {
-        if (document.getElementById('freq-helper-styles')) return;
-        const style = document.createElement('style');
-        style.id = 'freq-helper-styles';
-        style.innerHTML = `
-            #freq-helper-popup { position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:380px; background:var(--SmartThemeBlurTintColor, var(--bg-color, rgba(20,20,20,0.95))); border:1px solid var(--SmartThemeBorderColor, var(--border-color, #555)); border-radius:10px; z-index:999999; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:none; backdrop-filter:blur(10px); color:var(--text-color, #eee); }
-            .freq-popup-header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color, #555); padding-bottom:10px; margin-bottom:10px; }
-            .freq-popup-title { margin:0; font-size:16px; font-weight:bold; }
-            .freq-close-btn { background:none; border:none; color:var(--text-color); font-size:20px; cursor:pointer; }
-            .freq-close-btn:hover { color:#ff6b6b; }
-            #freq-words-container { max-height:160px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.2); border-radius:6px; border:1px solid var(--border-color, #444); margin-bottom:10px; }
-            .freq-word-tag { display:inline-block; margin:3px; padding:4px 10px; background:var(--SmartThemeButtonBackgroundColor, #333); border:1px solid var(--SmartThemeBorderColor, #555); border-radius:6px; cursor:pointer; transition:0.2s; font-size:13px; }
-            .freq-word-tag:hover { border-color:cyan; background:#444; color:white; }
-            .freq-word-tag span { font-size:11px; opacity:0.6; margin-left:5px; }
-            .freq-textarea { width:100%; height:60px; background:rgba(0,0,0,0.4); color:#4ade80; border:1px solid var(--border-color, #555); border-radius:6px; font-family:monospace; padding:8px; box-sizing:border-box; }
-            .freq-copy-btn { width:100%; padding:10px; margin-top:10px; background:var(--SmartThemeButtonBackgroundColor, #444); color:var(--text-color); border:none; border-radius:6px; cursor:pointer; font-weight:bold; }
-            .freq-copy-btn:hover { background:#555; }
-        `;
-        document.head.appendChild(style);
-    }
-
-    // --- 2. 核心分析逻辑 (Intl 原生分词) ---
+    // --- 1. 核心分析逻辑 (Intl 原生分词) ---
     function analyzeFrequency() {
-        const chat = window.chat || [];
+        const chat = window.chat || (typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext().chat : []);
+        // 过滤：非系统消息、未隐藏
         const visibleText = chat.filter(m => !m.hidden && !m.is_system && m.mes).map(m => m.mes).join('\n');
-        const container = document.getElementById('freq-words-container');
         
+        const container = document.getElementById('freq-words-container');
         if (!visibleText) {
-            container.innerHTML = '<div style="opacity:0.6; text-align:center;">当前可见对话没有足够的文本...</div>';
+            container.innerHTML = '<div style="text-align:center; color:var(--freq-text-secondary); padding:10px;">当前可见对话没有足够的文本...</div>';
             return;
         }
 
@@ -38,6 +17,7 @@
         if (typeof Intl !== 'undefined' && Intl.Segmenter) {
             const segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' });
             for (const { segment, isWordLike } of segmenter.segment(visibleText)) {
+                // 确保是词语、长度 >= 2、且不是纯数字
                 if (isWordLike && segment.length >= 2 && !/^\d+$/.test(segment)) {
                     freqMap[segment] = (freqMap[segment] || 0) + 1;
                 }
@@ -50,7 +30,7 @@
         const sortedFreq = Object.entries(freqMap).sort((a, b) => b[1] - a[1]).slice(0, 30);
         
         if (sortedFreq.length === 0) {
-            container.innerHTML = '<div style="opacity:0.6; text-align:center;">未提取到有效的高频词。</div>';
+            container.innerHTML = '<div style="text-align:center; color:var(--freq-text-secondary); padding:10px;">未提取到有效的高频词。</div>';
             return;
         }
 
@@ -61,25 +41,86 @@
         `).join('');
     }
 
-    // --- 3. 初始化弹窗 DOM ---
-    function initModal() {
-        if ($('#freq-helper-popup').length) return;
-        const popupHtml = `
-        <div id="freq-helper-popup">
-            <div class="freq-popup-header">
-                <div class="freq-popup-title"><i class="fa-solid fa-broom"></i> 词频与正则助手</div>
-                <button id="freq-close-btn" class="freq-close-btn">&times;</button>
-            </div>
-            <div style="font-size:12px; opacity:0.8; margin-bottom:5px;">点击下方高频词添加到正则：</div>
-            <div id="freq-words-container">加载中...</div>
-            <div style="font-size:12px; margin-bottom:5px;">正则预览区：</div>
-            <textarea id="freq-regex-input" class="freq-textarea">/(极度|极其</textarea>
-            <button id="freq-copy-regex" class="freq-copy-btn"><i class="fa-solid fa-copy"></i> 复制正则表达式</button>
-        </div>`;
-        $('body').append(popupHtml);
+    // --- 2. 弹窗居中函数 (直接借用隐藏助手的逻辑) ---
+    function centerPopup($popup) {
+        if (!$popup || $popup.length === 0 || $popup.is(':hidden')) return;
+        const top = Math.max(10, ($(window).height() - $popup.outerHeight()) / 2);
+        const left = Math.max(10, ($(window).width() - $popup.outerWidth()) / 2);
+        $popup.css({ top: `${top}px`, left: `${left}px`, transform: 'none' });
+    }
 
-        $('#freq-close-btn').on('click', () => $('#freq-helper-popup').fadeOut(150));
-        $('#freq-copy-regex').on('click', () => {
+    // --- 3. UI 初始化与注入 ---
+    function createUI() {
+        // A. 注入到魔法棒容器 (像隐藏助手一样)
+        if ($('#data_bank_wand_container').length && !$('#freq-helper-wand-button').length) {
+            const wandBtn = `
+                <div id="freq-helper-wand-button" title="打开词频与正则助手">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>词频助手</span>
+                </div>`;
+            $('#data_bank_wand_container').append(wandBtn);
+        }
+
+        // B. 注入到侧边扩展栏
+        const targetMenu = $('#extensions_settings .list-group, .extensions-menu').first();
+        if (targetMenu.length > 0 && !$('#freq-native-list-btn').length) {
+            const listBtn = `
+                <div id="freq-native-list-btn" class="list-group-item interactable" title="分析对话词频">
+                    <i class="fa-solid fa-chart-line" style="margin-right: 8px; width: 20px; text-align: center;"></i>
+                    <span class="drawer-item-text">词频助手</span>
+                </div>`;
+            targetMenu.prepend(listBtn);
+        }
+
+        // C. 生成弹窗 HTML (使用从隐藏助手复刻的 CSS 类)
+        if (!$('#freq-helper-popup').length) {
+            const popupHtml = `
+            <div id="freq-helper-popup" class="freq-helper-popup">
+                <button id="freq-helper-popup-close-icon" class="freq-popup-close-icon">&times;</button>
+                <div class="freq-popup-title">
+                    <i class="fa-solid fa-broom"></i> 词频分析与正则
+                </div>
+                
+                <div class="freq-helper-section">
+                    <p class="freq-helper-label">点击下方高频词，快速加入正则规则：</p>
+                    <div id="freq-words-container">加载中...</div>
+                </div>
+
+                <div class="freq-helper-section">
+                    <p class="freq-helper-label">正则预览区 (可手动修改)：</p>
+                    <textarea id="freq-regex-input">/(极度|极其</textarea>
+                </div>
+
+                <div class="freq-helper-popup-footer">
+                    <button id="freq-copy-regex" class="freq-helper-btn">
+                        <i class="fa-solid fa-copy"></i> 复制正则表达式
+                    </button>
+                </div>
+            </div>`;
+            $('body').append(popupHtml);
+        }
+    }
+
+    // --- 4. 事件绑定 ---
+    function bindEvents() {
+        // 点击入口按钮打开弹窗
+        $(document).off('click', '#freq-helper-wand-button, #freq-native-list-btn').on('click', '#freq-helper-wand-button, #freq-native-list-btn', function(e) {
+            e.stopPropagation();
+            analyzeFrequency();
+            const $popup = $('#freq-helper-popup');
+            $popup.show(); // 使用 show 配合 CSS 的 fadeIn 动画
+            centerPopup($popup);
+            $(window).off('resize.freqHelper').on('resize.freqHelper', () => centerPopup($popup));
+        });
+
+        // 关闭弹窗
+        $(document).off('click', '#freq-helper-popup-close-icon').on('click', '#freq-helper-popup-close-icon', function() {
+            $('#freq-helper-popup').hide();
+            $(window).off('resize.freqHelper');
+        });
+
+        // 复制正则
+        $(document).off('click', '#freq-copy-regex').on('click', '#freq-copy-regex', function() {
             const ta = document.getElementById('freq-regex-input');
             if (!ta.value.endsWith(')')) ta.value += ')/g';
             ta.select();
@@ -88,45 +129,22 @@
         });
     }
 
-    // --- 4. 强力注入菜单入口 (防重绘) ---
-    function keepMenuButtonAlive() {
-        // 监控截图里的那个菜单
-        const targetMenu = $('#extensions_settings .list-group, .extensions-menu').first();
-        
-        if (targetMenu.length > 0 && !$('#freq-native-btn').length) {
-            const btnHtml = `
-            <div id="freq-native-btn" class="list-group-item interactable" title="分析对话词频">
-                <i class="fa-solid fa-chart-line" style="margin-right: 8px; width: 20px; text-align: center;"></i>
-                <span class="drawer-item-text">词频助手</span>
-            </div>`;
-            
-            // 把它插在菜单的最上面
-            targetMenu.prepend(btnHtml);
-            
-            // 绑定点击事件
-            $('#freq-native-btn').off('click').on('click', function(e) {
-                e.stopPropagation(); // 阻止菜单默认关闭
-                analyzeFrequency();
-                $('#freq-helper-popup').fadeIn(150);
-            });
+    // --- 5. 启动总线 ---
+    function initExtension() {
+        createUI();
+        bindEvents();
+        // 轮询保护：防止侧边栏重绘导致按钮消失
+        setInterval(createUI, 1000); 
+    }
+
+    // 监听原生 appReady 事件
+    jQuery(async () => {
+        if (typeof eventSource !== 'undefined' && typeof event_types !== 'undefined' && event_types.APP_READY) {
+            eventSource.on(event_types.APP_READY, initExtension);
+            if (document.getElementById('send_textarea')) initExtension();
+        } else {
+            setTimeout(initExtension, 2000);
         }
-    }
+    });
 
-    // --- 5. 启动流程 ---
-    function bootStrap() {
-        console.log(`[${extensionName}] 启动！`);
-        injectCSS();
-        initModal();
-        
-        // 核心改动：每 500 毫秒检查一次。就算酒馆把菜单删了重画，它也会在半秒内重新长出来！
-        setInterval(keepMenuButtonAlive, 500);
-    }
-
-    // 监听酒馆核心启动事件
-    if (typeof eventSource !== 'undefined' && event_types && event_types.APP_READY) {
-        eventSource.on(event_types.APP_READY, bootStrap);
-        if (document.getElementById('send_textarea')) bootStrap(); // 如果已经启动，直接运行
-    } else {
-        setTimeout(bootStrap, 2000);
-    }
 })();
