@@ -1,27 +1,17 @@
-// 严格按照 hide 扩展的方式导入官方模块
 import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const extensionName = "blacklist_regex";
+const extensionName = "auto_blacklist";
+const REGEX_RULE_ID = "auto_blacklist_generated_rule"; // 我们在酒馆正则库里的唯一通行证
+
 const defaultSettings = {
-    bannedWords: ["极度", "极其", "病态"]
+    bannedWords: ["极度", "极其", "病态"],
+    replacement: "***",
+    autoApply: true
 };
 
-// 弹窗居中函数 (直接拷贝自 hide 扩展)
-function centerPopup($popup) {
-    if (!$popup || $popup.length === 0 || $popup.is(':hidden')) return;
-    const windowWidth = $(window).width();
-    const windowHeight = $(window).height();
-    const popupWidth = $popup.outerWidth();
-    const popupHeight = $popup.outerHeight();
-    const top = Math.max(10, (windowHeight - popupHeight) / 2);
-    const left = Math.max(10, (windowWidth - popupWidth) / 2);
-    $popup.css({ top: `${top}px`, left: `${left}px`, transform: 'none' });
-}
-
-// 初始化/加载扩展设置
+// 1. 加载本地设置
 function loadSettings() {
-    console.log(`[${extensionName}] Loading settings...`);
     extension_settings[extensionName] = extension_settings[extensionName] || {};
     Object.assign(extension_settings[extensionName], {
         ...defaultSettings,
@@ -29,106 +19,134 @@ function loadSettings() {
     });
 }
 
-// 创建 UI 面板
-function createUI() {
-    console.log(`[${extensionName}] Entering createUI.`);
+// 2. 核心大招：将我们的词汇表直接“注入”到酒馆的内置正则引擎中
+function syncToNativeRegex() {
+    const settings = extension_settings[extensionName];
     
-    // 1. 注入扩展列表 (#extensions_settings)
-    const settingsHtml = `
-    <div id="bl-helper-settings" class="hide-helper-container">
-        <div class="inline-drawer">
-            <div class="inline-drawer-toggle inline-drawer-header">
-                <b>屏蔽词正则助手</b>
-                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-            </div>
-            <div class="inline-drawer-content" style="padding: 10px;">
-                <button id="bl-drawer-open-btn" class="menu_button" style="width:100%;">
-                    <i class="fa-solid fa-ban"></i> 打开屏蔽词管理面板
-                </button>
-            </div>
-        </div>
-    </div>`;
-    $("#extensions_settings").append(settingsHtml);
+    // 确保酒馆全局的正则数组存在
+    if (!extension_settings.regex) {
+        extension_settings.regex = [];
+    }
 
-    // 2. 创建输入区旁的魔法棒按钮
-    createInputWandButton();
-    // 3. 创建弹窗
-    createPopup();
-    // 4. 绑定所有事件
-    setupEventListeners();
-}
-
-function createInputWandButton() {
-    $('#bl-helper-wand-button').remove();
-    const buttonHtml = `
-        <div id="bl-helper-wand-button" title="打开屏蔽词生成器">
-            <i class="fa-solid fa-ban"></i>
-            <span>屏蔽词</span>
-        </div>`;
-    $('#data_bank_wand_container').append(buttonHtml);
-}
-
-function createPopup() {
-    const popupHtml = `
-        <div id="bl-helper-popup" class="bl-helper-popup">
-            <button id="bl-popup-close-icon" class="bl-popup-close-icon">&times;</button>
-            <div class="bl-popup-title">
-                <i class="fa-solid fa-ban"></i> 屏蔽词管理与正则
-            </div>
-            
-            <div class="bl-input-group">
-                <input type="text" id="bl-new-word" placeholder="输入不想看到的词 (如: 极度)">
-                <button id="bl-add-word-btn">添加</button>
-            </div>
-
-            <div style="font-size:12px; opacity:0.8;">当前黑名单词汇：</div>
-            <div id="bl-words-container"></div>
-            
-            <div style="font-size:12px; opacity:0.8;">自动生成的正则预览：</div>
-            <textarea id="bl-regex-output" readonly></textarea>
-            
-            <button id="bl-copy-btn"><i class="fa-solid fa-copy"></i> 复制正则表达式</button>
-        </div>`;
-    $('body').append(popupHtml);
-}
-
-// 核心逻辑：渲染词汇和生成正则
-function renderWords() {
-    const words = extension_settings[extensionName].bannedWords;
-    const container = $('#bl-words-container');
-    const regexOutput = $('#bl-regex-output');
-
-    if (words.length === 0) {
-        container.html('<div style="opacity:0.5; font-size:12px; width:100%; text-align:center;">还没有添加任何屏蔽词</div>');
-        regexOutput.val('');
+    // 找找看之前有没有注入过我们的专属规则
+    let ruleIndex = extension_settings.regex.findIndex(r => r.id === REGEX_RULE_ID);
+    
+    if (!settings.autoApply || settings.bannedWords.length === 0) {
+        // 如果开关没开，或者没有词，就禁用这条规则
+        if (ruleIndex !== -1) extension_settings.regex[ruleIndex].disabled = true;
     } else {
-        container.html(words.map((w, index) => `
+        // 为了防止正则报错，对用户输入的符号进行转义
+        const escapedWords = settings.bannedWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const regexStr = `/(${escapedWords.join('|')})/g`;
+
+        // 构造标准的酒馆正则对象
+        const ruleObj = {
+            id: REGEX_RULE_ID,
+            scriptName: "🚫 自动屏蔽词拦截 (由插件管理)",
+            regex: regexStr,
+            replacementStr: settings.replacement,
+            placement: [1, 2], // 1代表修改用户输入, 2代表修改AI输出 (彻底杜绝)
+            disabled: false,
+            markdownOnly: false,
+            promptOnly: false,
+            runOnEdit: true,
+            minDepth: null,
+            maxDepth: null
+        };
+
+        if (ruleIndex !== -1) {
+            extension_settings.regex[ruleIndex] = ruleObj; // 更新
+        } else {
+            extension_settings.regex.push(ruleObj); // 新增
+        }
+    }
+
+    saveSettingsDebounced(); // 保存全局设置
+
+    // 唤醒酒馆的正则引擎，让新规则立刻生效
+    if (typeof window.loadRegex === 'function') {
+        window.loadRegex();
+    }
+}
+
+// 3. 渲染 UI
+function renderUI() {
+    const settings = extension_settings[extensionName];
+    const container = $('#bl-words-container');
+    
+    if (settings.bannedWords.length === 0) {
+        container.html('<div style="opacity:0.5; font-size:12px; width:100%; text-align:center;">黑名单为空</div>');
+    } else {
+        container.html(settings.bannedWords.map((w, index) => `
             <div class="bl-word-tag">
                 ${w} <span class="del-btn" data-index="${index}">&times;</span>
             </div>
         `).join(''));
-        regexOutput.val(`/(${words.join('|')})/g`);
     }
+
+    $('#bl-replacement-input').val(settings.replacement);
+    $('#bl-auto-apply-checkbox').prop('checked', settings.autoApply);
 }
 
-// 绑定事件 (和 hide 扩展的绑定方式一模一样)
-function setupEventListeners() {
-    // 打开弹窗 (从魔法棒 或 扩展抽屉)
-    $('#bl-helper-wand-button, #bl-drawer-open-btn').on('click', function() {
-        renderWords();
-        const $popup = $('#bl-helper-popup');
-        $popup.show();
-        centerPopup($popup);
-        $(window).off('resize.blHelper').on('resize.blHelper', () => centerPopup($popup));
+// 4. 将控制面板嵌入扩展菜单
+function createUI() {
+    if ($('#bl-helper-settings').length > 0) return;
+
+    const html = `
+    <div id="bl-helper-settings" class="hide-helper-container">
+        <div class="inline-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header interactable">
+                <b><i class="fa-solid fa-ban"></i> 自动屏蔽词管家</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content" style="padding: 15px 10px; display:none;">
+                
+                <div class="bl-flex-row">
+                    <input type="checkbox" id="bl-auto-apply-checkbox" style="width:16px; height:16px;">
+                    <label for="bl-auto-apply-checkbox" style="font-size:14px; cursor:pointer;">启用全自动拦截 (接入内置引擎)</label>
+                    <span id="bl-sync-status" class="bl-status"><i class="fa-solid fa-check"></i> 已同步生效</span>
+                </div>
+
+                <div class="bl-flex-row">
+                    <span style="font-size:13px; opacity:0.8;">将屏蔽词替换为:</span>
+                    <input type="text" id="bl-replacement-input" class="bl-input" style="max-width: 80px;" placeholder="***">
+                </div>
+                <hr class="sysHR">
+                <div class="bl-flex-row">
+                    <input type="text" id="bl-new-word" class="bl-input" placeholder="输入不想看到的词 (如: 极度)">
+                    <button id="bl-add-word-btn" class="bl-btn bl-btn-primary">添加</button>
+                </div>
+                <div style="font-size:12px; opacity:0.8; margin-bottom:8px;">当前黑名单：</div>
+                <div id="bl-words-container"></div>
+            </div>
+        </div>
+    </div>`;
+
+    $("#extensions_settings").prepend(html);
+
+    $('#bl-helper-settings .inline-drawer-toggle').on('click', function () {
+        $(this).next('.inline-drawer-content').slideToggle(200);
+        $(this).find('.inline-drawer-icon').toggleClass('down up');
     });
 
-    // 关闭弹窗
-    $('#bl-popup-close-icon').on('click', function() {
-        $('#bl-helper-popup').hide();
-        $(window).off('resize.blHelper');
-    });
+    renderUI();
+    bindEvents();
+}
 
-    // 添加词汇
+function showSyncSuccess() {
+    $('#bl-sync-status').stop(true, true).fadeIn(200).delay(1500).fadeOut(300);
+}
+
+// 每次改动都会自动同步给酒馆引擎
+function handleSettingsChange() {
+    saveSettingsDebounced();
+    syncToNativeRegex();
+    showSyncSuccess();
+    renderUI();
+}
+
+// 5. 事件绑定
+function bindEvents() {
     $('#bl-add-word-btn').on('click', function() {
         const input = document.getElementById('bl-new-word');
         const word = input.value.trim();
@@ -137,54 +155,47 @@ function setupEventListeners() {
         if (word && !wordsList.includes(word)) {
             wordsList.push(word);
             input.value = '';
-            // 使用官方 API 存档
-            saveSettingsDebounced();
-            renderWords();
+            handleSettingsChange();
         } else if (wordsList.includes(word)) {
             if (typeof toastr !== 'undefined') toastr.warning('该词已经在黑名单中了！');
         }
     });
 
-    // 回车添加
     $('#bl-new-word').on('keypress', function(e) {
         if (e.which === 13) $('#bl-add-word-btn').click();
     });
 
-    // 删除词汇 (委托绑定)
     $('#bl-words-container').on('click', '.del-btn', function() {
         const index = $(this).data('index');
         extension_settings[extensionName].bannedWords.splice(index, 1);
-        saveSettingsDebounced(); // 官方存档 API
-        renderWords();
+        handleSettingsChange();
     });
 
-    // 复制正则
-    $('#bl-copy-btn').on('click', function() {
-        const ta = document.getElementById('bl-regex-output');
-        if (!ta.value) return;
-        ta.select();
-        document.execCommand('copy');
-        if (typeof toastr !== 'undefined') toastr.success('复制成功！快去替换工具里粘贴吧。');
+    $('#bl-replacement-input').on('change', function() {
+        extension_settings[extensionName].replacement = $(this).val();
+        handleSettingsChange();
+    });
+
+    $('#bl-auto-apply-checkbox').on('change', function() {
+        extension_settings[extensionName].autoApply = $(this).is(':checked');
+        handleSettingsChange();
     });
 }
 
-// --- 扩展入口 (完全复刻 hide 扩展的初始化流程) ---
+// 6. 原生启动流程
 jQuery(async () => {
-    console.log(`[${extensionName}] Initializing extension...`);
-
     let isInitialized = false;
-    const initializeExtension = () => {
+    const init = () => {
         if (isInitialized) return;
         isInitialized = true;
-        
         loadSettings();
         createUI();
+        syncToNativeRegex(); // 启动时自动同步一次规则
     };
 
-    // 严谨的官方事件总线监听
     if (typeof eventSource !== 'undefined' && typeof event_types !== 'undefined' && event_types.APP_READY) {
-        eventSource.on(event_types.APP_READY, initializeExtension);
+        eventSource.on(event_types.APP_READY, init);
     } else {
-        setTimeout(initializeExtension, 2000);
+        setTimeout(init, 2000);
     }
 });
