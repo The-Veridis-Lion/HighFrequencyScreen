@@ -1,4 +1,3 @@
-/* 弹窗主体：强制悬浮，不挤压回复栏 */
 #bl-purifier-popup {
     position: fixed !important;
     top: 50% !important; left: 50% !important;
@@ -38,7 +37,6 @@
 }
 .bl-tag span { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
 
-/* 仅保留最基础的点击交互，不再写任何位移和对齐格式 */
 #bl-wand-btn {
     cursor: pointer;
     display: flex;
