@@ -46,6 +46,7 @@ function performGlobalCleanse() {
     }
     if (chatChanged) saveChat(); 
 
+    // 对整个聊天区进行文本节点洗刷
     purifyTextNodes(document.getElementById('chat'), regex);
 }
 
@@ -57,10 +58,10 @@ function initRealtimeInterceptor() {
         
         mutations.forEach(m => {
             m.addedNodes.forEach(node => {
-                if (node.nodeType === 3) { 
+                if (node.nodeType === 3) { // 纯文字节点
                     const cleaned = node.nodeValue.replace(regex, '');
                     if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
-                } else if (node.nodeType === 1) { 
+                } else if (node.nodeType === 1) { // 元素节点
                     purifyTextNodes(node, regex);
                 }
             });
@@ -76,7 +77,7 @@ function initRealtimeInterceptor() {
         chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true });
     }
 
-    // 依然保留对输入框的拦截
+    // 对输入框的拦截
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
@@ -89,7 +90,7 @@ function initRealtimeInterceptor() {
     }, true);
 }
 
-// 构建 UI (已删除底部的核弹按钮)
+// 构建 UI (仅移除了底部按钮 HTML)
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
@@ -113,7 +114,7 @@ function setupUI() {
     }
 }
 
-// 绑定事件
+// 绑定事件 (仅移除了底部按钮的点击事件)
 function bindEvents() {
     $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
@@ -150,7 +151,7 @@ jQuery(() => {
     const boot = () => {
         setupUI();
         bindEvents();
-        initRealtimeInterceptor(); // 开启实时防空导弹
+        initRealtimeInterceptor(); 
         performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
