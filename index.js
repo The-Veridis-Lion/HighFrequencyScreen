@@ -12,21 +12,52 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 🛡️ 核心黑科技 1：全域文本节点净化器
-function purifyTextNodes(rootNode, regex) {
+// 🛡️ 核心黑科技 1：全频段 DOM 净化器 (文本 + 注释 + 表格控件)
+function purifyDOM(rootNode, regex) {
     if (!rootNode) return;
-    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
+
+    // 1. 扫描所有的文本节点(3) 和 HTML注释节点(8) -> 解决 藏毒问题
+    const walker = document.createTreeWalker(
+        rootNode, 
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, 
+        null, 
+        false
+    );
+    
     let node;
     while (node = walker.nextNode()) {
-        const parent = node.parentNode;
-        // 避开输入框，防止打字时光标乱跳
-        if (parent && (parent.tagName === 'TEXTAREA' || parent.tagName === 'INPUT' || parent.isContentEditable)) continue;
-        
-        const original = node.nodeValue;
-        const cleaned = original.replace(regex, '');
-        if (original !== cleaned) {
-            node.nodeValue = cleaned; // 直接在渲染底层抹杀
+        if (node.nodeType === 3) { // 文本节点
+            const parent = node.parentNode;
+            
+            // 【取消一刀切的免死金牌】
+            if (parent) {
+                // 永远放过主聊天输入框和酒馆默认编辑框
+                if (parent.id === 'send_textarea' || (parent.classList && parent.classList.contains('edit_textarea'))) continue;
+                // 只有当用户正在“激活/聚焦”这个单元格时才放过它，防止光标乱跳
+                if (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))) continue;
+            }
+
+            const original = node.nodeValue;
+            const cleaned = original.replace(regex, '');
+            if (original !== cleaned) node.nodeValue = cleaned;
+            
+        } else if (node.nodeType === 8) { // 注释节点 const original = node.nodeValue;
+            const cleaned = original.replace(regex, '');
+            if (original !== cleaned) node.nodeValue = cleaned;
         }
+    }
+
+    // 2. 如果表格用的是真正的 <input> 框，直接洗刷 value
+    if (rootNode.nodeType === 1 && rootNode.querySelectorAll) {
+        const inputs = rootNode.querySelectorAll('input, textarea');
+        inputs.forEach(input => {
+            if (input.id === 'send_textarea' || input.classList.contains('edit_textarea')) return;
+            if (document.activeElement === input) return; // 正在输入则跳过
+            
+            if (input.value && input.value.match(regex)) {
+                input.value = input.value.replace(regex, '');
+            }
+        });
     }
 }
 
@@ -46,11 +77,11 @@ function performGlobalCleanse() {
     }
     if (chatChanged) saveChat(); 
 
-    // 对整个聊天区进行文本节点洗刷
-    purifyTextNodes(document.getElementById('chat'), regex);
+    // 将净化范围扩大到整个 DOM (包含表格和思维链)
+    purifyDOM(document.getElementById('chat'), regex);
 }
 
-// 🛡️ 核心黑科技 2：实时防空系统 (实时拦截流式打字与动态渲染)
+// 🛡️ 核心黑科技 2：实时防空系统
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
@@ -58,13 +89,14 @@ function initRealtimeInterceptor() {
         
         mutations.forEach(m => {
             m.addedNodes.forEach(node => {
-                if (node.nodeType === 3) { // 纯文字节点
+                if (node.nodeType === 3 || node.nodeType === 8) { // 拦截刚生成的文本和注释
                     const cleaned = node.nodeValue.replace(regex, '');
                     if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
-                } else if (node.nodeType === 1) { // 元素节点
-                    purifyTextNodes(node, regex);
+                } else if (node.nodeType === 1) { // 拦截刚生成的表格/思维链元素
+                    purifyDOM(node, regex);
                 }
             });
+            // 拦截流式输出过程中的变动
             if (m.type === 'characterData') {
                 const cleaned = m.target.nodeValue.replace(regex, '');
                 if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
@@ -77,20 +109,26 @@ function initRealtimeInterceptor() {
         chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true });
     }
 
-    // 对输入框的拦截
+    // 监听键盘打字输入 (用于清剿你试图在表格里打出来的脏字)
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
-        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-            if (e.target.value.match(regex)) {
-                const pos = e.target.selectionStart;
-                e.target.value = e.target.value.replace(regex, '');
-                e.target.selectionStart = e.target.selectionEnd = pos;
+        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+            let val = e.target.value || e.target.innerText;
+            if (val && val.match(regex)) {
+                const cleaned = val.replace(regex, '');
+                if (e.target.value !== undefined) {
+                    const pos = e.target.selectionStart;
+                    e.target.value = cleaned;
+                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
+                } else {
+                    e.target.innerText = cleaned;
+                }
             }
         }
     }, true);
 }
 
-// 构建 UI (仅移除了底部按钮 HTML)
+// 构建 UI (保持原样)
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
@@ -114,7 +152,7 @@ function setupUI() {
     }
 }
 
-// 绑定事件 (仅移除了底部按钮的点击事件)
+// 绑定事件
 function bindEvents() {
     $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
@@ -151,7 +189,7 @@ jQuery(() => {
     const boot = () => {
         setupUI();
         bindEvents();
-        initRealtimeInterceptor(); 
+        initRealtimeInterceptor(); // 开启增强版实时防空导弹
         performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
