@@ -134,7 +134,7 @@
         padding: 15px 20px !important;
         width: 92% !important;
         /* 手机端保险起见，距顶 15% (强行避开所有酒馆顶部菜单和状态栏) */
-        top: 40vh !important; 
+        top: 30vh !important; 
         left: 50% !important;
         transform: translateX(-50%) !important;
     }
