@@ -12,38 +12,25 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// ☢️ 核心黑科技：非递归深度洗刷 (绝对不放过 tableEdit 藏在 extra 里的任何嵌套数据)
-function deepScrub(obj, regex) {
-    let changes = 0;
-    if (obj === null || typeof obj !== 'object') return changes;
-
-    const stack = [obj];
-    const seen = new Set(); // 防止复杂数据结构导致死循环
-
-    while(stack.length > 0) {
-        const current = stack.pop();
-        if (seen.has(current)) continue;
-        seen.add(current);
-
-        for (let key in current) {
-            if (Object.prototype.hasOwnProperty.call(current, key)) {
-                const val = current[key];
-                if (typeof val === 'string') {
-                    const cleaned = val.replace(regex, '');
-                    if (cleaned !== val) {
-                        current[key] = cleaned;
-                        changes++;
-                    }
-                } else if (val !== null && typeof val === 'object') {
-                    stack.push(val);
-                }
-            }
+// 🛡️ 核心黑科技 1：全域文本节点净化器 (无视任何 HTML 容器，专杀思维链和表格)
+function purifyTextNodes(rootNode, regex) {
+    if (!rootNode) return;
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while (node = walker.nextNode()) {
+        const parent = node.parentNode;
+        // 避开输入框，防止打字时被强行删词导致光标乱跳
+        if (parent && (parent.tagName === 'TEXTAREA' || parent.tagName === 'INPUT' || parent.isContentEditable)) continue;
+        
+        const original = node.nodeValue;
+        const cleaned = original.replace(regex, '');
+        if (original !== cleaned) {
+            node.nodeValue = cleaned; // 直接在渲染底层抹杀
         }
     }
-    return changes;
 }
 
-// 日常打字防复读 (轻量级)
+// 日常内存及全屏清理
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -51,7 +38,7 @@ function performGlobalCleanse() {
     let chatChanged = false;
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach(msg => {
-            if (msg.mes && regex.test(msg.mes)) {
+            if (msg.mes && msg.mes.match(regex)) {
                 msg.mes = msg.mes.replace(regex, '');
                 chatChanged = true;
             }
@@ -59,13 +46,11 @@ function performGlobalCleanse() {
     }
     if (chatChanged) saveChat(); 
 
-    $('.mes_text').each(function() {
-        const html = $(this).html();
-        if (regex.test(html)) $(this).html(html.replace(regex, ''));
-    });
+    // 对整个聊天区进行文本节点洗刷 (包含思维链、表格、正文)
+    purifyTextNodes(document.getElementById('chat'), regex);
 }
 
-// 💥 终极锁死大扫除 (手动触发)
+// 💥 降维打击大扫除 (保留上一版的核弹级序列化功能)
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) {
@@ -73,69 +58,83 @@ async function performDeepCleanse() {
         return;
     }
 
-    // 1. 弹出强力遮罩，锁死 UI 操作，防止表格插件在此时抢占写入
     $('body').append(`
-        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:24px;">🔪 正在执行底层代码级清剿...</h2>
-            <p style="color:#ff6b6b;font-weight:bold;">正在强制锁定硬盘写入，请勿关闭或刷新页面！</p>
+        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
+            <h2 style="margin-bottom:20px;font-size:24px;">🚀 正在执行降维打击...</h2>
+            <p style="color:#ff6b6b;font-weight:bold;">正在将整个数据库压扁并抹杀屏蔽词，请勿关闭页面！</p>
         </div>
     `);
 
-    let scrubbedItems = 0;
-    let chatChanged = false;
+    await new Promise(r => setTimeout(r, 100));
 
-    // 2. 深度洗刷所有聊天记录
-    if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach(msg => {
-            const changes = deepScrub(msg, regex);
-            if (changes > 0) {
-                scrubbedItems += changes;
-                chatChanged = true;
-            }
-        });
-    }
+    try {
+        let chatString = JSON.stringify(window.chat);
+        const originalLength = chatString.length;
+        
+        chatString = chatString.replace(regex, '');
 
-    if (chatChanged) {
-        try {
-            // 3. 强制异步保存
+        if (chatString.length !== originalLength) {
+            const parsed = JSON.parse(chatString);
+            window.chat.splice(0, window.chat.length, ...parsed);
+            
             const savePromise = saveChat();
             if (savePromise instanceof Promise) {
                 await savePromise;
             }
             
-            // 4. 关键：额外硬核等待 2 秒钟
-            // 确保 Node.js 彻底将 .jsonl 写入固态硬盘，防止 F5 刷新杀掉进程
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 2000)); // 等待硬盘写入
             
             $('#bl-loading-overlay').remove();
-            alert(`✅ 连根拔起！\n\n已刺穿表格代码及隐藏数据库，共清剿了 ${scrubbedItems} 处八股词死角。\n\n点击确定后将刷新页面。`);
+            
+            const diff = originalLength - chatString.length;
+            alert(`✅ 降维打击成功！\n\n以纯文本形式强制蒸发了 ${diff} 个屏蔽字符。\n\n点击确定后网页将刷新。`);
             location.reload(); 
-        } catch (e) {
-            console.error("数据写入失败:", e);
+        } else {
             $('#bl-loading-overlay').remove();
-            alert("写入硬盘失败，请按 F12 检查控制台报错。");
+            alert("降维扫描完毕，聊天记录（包括隐藏代码）中已不存在屏蔽词！");
         }
-    } else {
+    } catch (e) {
+        console.error("降维打击失败:", e);
         $('#bl-loading-overlay').remove();
-        alert("底层记录极度干净！所有角落都没找到屏蔽词！\n(如果屏幕上还有，请检查你的世界书或角色设定是否自带了该词)");
+        alert("操作失败！JSON解析出错，请按 F12 检查控制台。");
     }
 }
 
-// 小铅笔编辑框监听
-function initEditInterceptor() {
-    const observer = new MutationObserver(() => {
+// 🛡️ 核心黑科技 2：实时防空系统 (实时拦截 AI 的流式打字过程)
+function initRealtimeInterceptor() {
+    const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
         if (!regex) return;
-        $('.edit_textarea').each(function() {
-            if (regex.test(this.value)) this.value = this.value.replace(regex, '');
+        
+        mutations.forEach(m => {
+            // 拦截所有新加入的节点 (包含刚蹦出来的思维链文字)
+            m.addedNodes.forEach(node => {
+                if (node.nodeType === 3) { // 纯文字节点
+                    const cleaned = node.nodeValue.replace(regex, '');
+                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
+                } else if (node.nodeType === 1) { // 元素节点
+                    purifyTextNodes(node, regex);
+                }
+            });
+            // 拦截文字内容的修改 (流式输出的更新过程)
+            if (m.type === 'characterData') {
+                const cleaned = m.target.nodeValue.replace(regex, '');
+                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
+            }
         });
     });
-    observer.observe(document.body, { childList: true, subtree: true });
 
+    const chatEl = document.getElementById('chat');
+    if (chatEl) {
+        // 开启最高级别的监控：监控子节点增删、树状结构变化、以及文字数据的实时跳动
+        chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true });
+    }
+
+    // 依然保留对输入框小铅笔的拦截
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-            if (regex.test(e.target.value)) {
+            if (e.target.value.match(regex)) {
                 const pos = e.target.selectionStart;
                 e.target.value = e.target.value.replace(regex, '');
                 e.target.selectionStart = e.target.selectionEnd = pos;
@@ -165,7 +164,7 @@ function setupUI() {
                 </div>
                 <div id="bl-tags-container"></div>
                 <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">
+                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn" style="margin-top:15px; width:100%; padding:10px; background:#ff4757; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">
                         <i class="fa-solid fa-skull-crossbones"></i> 一键净化全量历史
                     </button>
                 </div>
@@ -195,9 +194,8 @@ function bindEvents() {
         renderTags();
     });
 
-    // 绑定核弹按钮
     $(document).on('click', '#bl-deep-clean-btn', () => {
-        if(confirm("将使用深度剥离算法清理整个聊天记录及所有插件的暗藏数据包。\n此操作将锁定屏幕数秒，确定执行吗？")) {
+        if(confirm("警告：此操作将使用序列化手段彻底重构聊天数据库！\n过程不可逆，屏幕将会锁死几秒钟，确定执行吗？")) {
             performDeepCleanse();
         }
     });
@@ -207,7 +205,6 @@ function bindEvents() {
     eventSource.on(event_types.CHAT_CHANGED, performGlobalCleanse);
 }
 
-// 渲染UI标签
 function renderTags() {
     const words = extension_settings[extensionName].bannedWords || [];
     $('#bl-tags-container').html(words.map((w, i) => `<div class="bl-tag">${w}<span data-index="${i}">&times;</span></div>`).join('') || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px;">空</div>');
@@ -218,7 +215,7 @@ jQuery(() => {
     const boot = () => {
         setupUI();
         bindEvents();
-        initEditInterceptor();
+        initRealtimeInterceptor(); // 开启实时防空导弹
         performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
