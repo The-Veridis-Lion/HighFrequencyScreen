@@ -1,9 +1,9 @@
-/* PC端保持居中 */
+/* 默认状态（PC端） */
 #bl-purifier-popup {
     position: fixed !important;
     top: 50% !important; left: 50% !important;
     transform: translate(-50%, -50%) !important;
-    width: 360px !important;
+    width: 360px !important; /* 电脑端默认宽度 */
     background: var(--SmartThemeBlurTintColor, #fff) !important;
     border: 1px solid var(--SmartThemeBorderColor, #ccc) !important;
     border-radius: 12px !important;
@@ -15,15 +15,15 @@
     backdrop-filter: blur(10px) !important;
 }
 
-/* 手机端/窄屏适配：改为靠顶固定，防止被键盘或视口挤出屏幕 */
+/* 手机端/窄屏适配 */
 @media screen and (max-width: 600px) {
     #bl-purifier-popup {
-        top: 10% !important; /* 距离顶部 10% */
-        left: 5% !important; /* 距离左侧 5% */
-        transform: none !important; /* 取消居中偏移 */
-        width: 90% !important; /* 宽度占满 90% */
+        /* 移除特定的 top 10% 和 transform none */
+        /* 它将现在完全继承 main block 的 top 50% 和 transform translate 居中代码 */
+        
+        width: 90% !important; /* 自动撑满宽度并预留边距 */
         max-height: 80vh !important; /* 防止超出底边 */
-        overflow-y: auto !important;
+        overflow-y: auto !important; /* 窄屏支持滚动 */
         padding: 15px !important;
     }
 }
@@ -51,6 +51,7 @@
 }
 .bl-tag span { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
 
+/* 菜单按钮对齐 */
 #bl-wand-btn {
     cursor: pointer;
     display: flex;
