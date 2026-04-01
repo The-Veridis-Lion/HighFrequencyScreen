@@ -1,9 +1,9 @@
-/* 弹窗主体：强制固定定位，不顶起回复栏 */
+/* PC端保持居中 */
 #bl-purifier-popup {
     position: fixed !important;
     top: 50% !important; left: 50% !important;
     transform: translate(-50%, -50%) !important;
-    width: 360px !important; /* 电脑端默认宽度 */
+    width: 360px !important;
     background: var(--SmartThemeBlurTintColor, #fff) !important;
     border: 1px solid var(--SmartThemeBorderColor, #ccc) !important;
     border-radius: 12px !important;
@@ -15,15 +15,17 @@
     backdrop-filter: blur(10px) !important;
 }
 
-/* 手机端/窄屏适配 */
+/* 手机端/窄屏适配：改为靠顶固定，防止被键盘或视口挤出屏幕 */
 @media screen and (max-width: 600px) {
     #bl-purifier-popup {
-        width: calc(100% - 40px) !important; /* 自动撑满宽度并预留边距 */
-        max-width: 360px !important;
+        top: 10% !important; /* 距离顶部 10% */
+        left: 5% !important; /* 距离左侧 5% */
+        transform: none !important; /* 取消居中偏移 */
+        width: 90% !important; /* 宽度占满 90% */
+        max-height: 80vh !important; /* 防止超出底边 */
+        overflow-y: auto !important;
         padding: 15px !important;
     }
-    .bl-title { font-size: 15px !important; }
-    .bl-input { font-size: 14px !important; }
 }
 
 .bl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--SmartThemeBorderColor); padding-bottom: 8px; }
@@ -49,7 +51,6 @@
 }
 .bl-tag span { margin-left: 8px; color: #ff6b6b; cursor: pointer; font-weight: bold; }
 
-/* 菜单按钮对齐 */
 #bl-wand-btn {
     cursor: pointer;
     display: flex;
