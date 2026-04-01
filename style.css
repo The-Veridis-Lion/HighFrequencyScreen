@@ -1,140 +1,116 @@
-/* --- 屏蔽词汇管理 CSS (深度参考 Hide-Helper 架构) --- */
-
-/* --- 1. 核心变量定义区 (完全同步参考代码的美学风格与层次) --- */
+/* --- 核心变量定义区 (完全同步你提供的参考代码风格) --- */
 :root {
-    /* 继承 SmartTheme 变量，并注入参考代码的柔和中性基调 */
-    --bl-accent-color: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 0.7));
-    --bl-accent-color-hover: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 1));
-    --bl-danger-color: #ff4757;
-    --bl-danger-color-hover: #c82333;
-
-    /* 核心背景与面板颜色 */
-    --bl-background-popup: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 1)); 
-    --bl-background-secondary: rgba(0, 0, 0, 0.05); /* 统一的次级背景 */
-    --bl-border-color: var(--SmartThemeBorderColor, #dee2e6);
+    --bl-accent-color: var(--accent-color, rgba(148, 0, 211, 0.7));
+    --bl-accent-color-hover: var(--accent-color-hover, rgba(148, 0, 211, 1));
+    --bl-danger-color: var(--danger-color, #ff4757);
     
-    /* 文本颜色分级 */
-    --bl-text-primary: var(--SmartThemeBodyColor, #343a40); 
-    --bl-text-secondary: #868e96; 
+    --bl-background-popup: var(--background-popup, rgba(255, 255, 255, 1)); 
+    --bl-background-secondary: var(--background-secondary, #f1f3f5);
+    --bl-border-color: var(--border-color, #dee2e6);
     
-    /* 输入框与按钮定制 */
-    --bl-input-bg: var(--SmartThemeInputBackground, #ffffff); 
-    --bl-btn-secondary-bg: var(--bl-background-secondary); 
-    --bl-btn-secondary-hover-bg: rgba(0, 0, 0, 0.1); 
+    --bl-text-primary: var(--text-primary, #343a40); 
+    --bl-text-secondary: var(--text-secondary, #868e96); 
+    
+    --bl-input-bg: var(--input-bg, #ffffff); 
 }
 
-/* --- 2. 侧边栏入口按钮 (完美复刻悬停与过渡动画) --- */
+/* --- 侧边栏入口按钮 --- */
 #bl-wand-btn {
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    padding: 5px 10px !important;
-    border-radius: 5px !important;
-    cursor: pointer !important;
-    transition: background-color 0.2s ease, color 0.2s ease !important;
-    color: var(--bl-text-secondary) !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    color: var(--bl-text-secondary);
 }
 
 #bl-wand-btn:hover {
-    color: var(--bl-text-primary) !important;
-    background-color: var(--bl-btn-secondary-hover-bg) !important;
+    color: var(--bl-text-primary);
+    background-color: var(--bl-background-secondary);
 }
 
-#bl-wand-btn i {
-    font-size: 16px !important;
-}
-
-/* --- 3. 弹窗全局定位与主体样式 (强制脱离文档流，绝对居中) --- */
+/* --- 弹窗主体 (复刻 hide-helper-popup) --- */
 #bl-purifier-popup {
-    /* 防御性定位：确保在任何设备上都强制居中 */
-    position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    
-    /* 尺寸与自适应 */
-    width: 90% !important;
-    max-width: 420px !important;
-    max-height: 85vh !important; /* 防止内容过长超出手机屏幕 */
-    
-    /* 视觉材质 (复刻阴影与高斯模糊) */
-    background: var(--bl-background-popup) !important;
-    border: 1px solid var(--bl-border-color) !important;
-    border-radius: 12px !important;
-    z-index: 999999 !important;
-    padding: 20px 25px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
-    
-    /* 内部排版 */
-    display: none; /* 由 JS 动态改为 flex */
-    flex-direction: column !important;
-    gap: 20px !important;
-    box-sizing: border-box !important;
-    
-    /* 现代玻璃态效果 */
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    animation: blFadeIn 0.3s ease-out !important;
+    position: fixed;
+    width: 90%;
+    max-width: 420px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bl-background-popup);
+    border: 1px solid var(--bl-border-color);
+    border-radius: 12px;
+    z-index: 10001;
+    padding: 20px 25px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    animation: fadeIn 0.3s ease-out;
 }
 
-@keyframes blFadeIn {
+@keyframes fadeIn {
     from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
     to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* --- 4. 弹窗头部 (标题与关闭按钮) --- */
+/* --- 弹窗头部 --- */
 #bl-purifier-popup .bl-header {
-    display: flex !important;
-    justify-content: center !important; /* 标题居中，复刻参考代码 */
-    align-items: center !important;
-    padding-bottom: 15px !important;
-    border-bottom: 1px solid var(--bl-border-color) !important;
-    position: relative !important;
-    margin: 0 !important;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--bl-border-color);
+    position: relative;
+    margin: 0;
 }
 
 #bl-purifier-popup .bl-title {
-    font-size: 20px !important;
-    font-weight: 500 !important;
-    margin: 0 !important;
-    color: var(--bl-text-primary) !important;
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0;
+    color: var(--bl-text-primary);
 }
 
-/* 右上角绝对定位的关闭图标 (复刻 .hide-helper-popup-close-icon) */
+/* 右上角关闭图标 */
 #bl-purifier-popup .bl-close {
-    position: absolute !important;
-    top: -5px !important;
-    right: -5px !important;
-    width: 30px !important;
-    height: 30px !important;
-    border: none !important;
-    background: none !important;
-    color: var(--bl-text-secondary) !important;
-    font-size: 25px !important;
-    line-height: 1 !important;
-    cursor: pointer !important;
-    transition: color 0.2s ease, transform 0.2s ease !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: none;
+    color: var(--bl-text-secondary);
+    font-size: 25px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
 }
 
 #bl-purifier-popup .bl-close:hover {
-    color: var(--bl-text-primary) !important;
-    transform: rotate(90deg) !important;
+    color: var(--bl-text-primary);
+    transform: rotate(90deg);
 }
 
-/* --- 5. 输入交互区 (复刻 #hide-last-n 和底部按钮) --- */
+/* --- 输入交互区 --- */
 #bl-purifier-popup .bl-input-group {
-    display: flex !important;
-    gap: 10px !important;
-    width: 100% !important;
+    display: flex;
+    gap: 10px;
+    width: 100%;
 }
 
 #bl-purifier-popup .bl-input {
-    flex: 1 !important;
-    width: 100% !important;
+    flex: 1;
+    width: 100%;
     padding: 10px 15px !important;
     border-radius: 8px !important;
     border: 1px solid var(--bl-border-color) !important;
@@ -142,111 +118,84 @@
     color: var(--bl-text-primary) !important;
     font-size: 16px !important;
     height: auto !important;
-    box-sizing: border-box !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
-    outline: none !important;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    outline: none;
 }
 
 #bl-purifier-popup .bl-input:focus {
-    border-color: var(--bl-accent-color) !important;
-    box-shadow: 0 0 0 3px rgba(148, 0, 211, 0.15) !important;
+    border-color: var(--bl-accent-color);
+    box-shadow: 0 0 0 3px rgba(148, 0, 211, 0.3);
 }
 
-/* 添加按钮 (复刻 #hide-save-settings-btn) */
+/* 添加按钮 */
 #bl-purifier-popup .bl-add-btn {
-    display: inline-flex !important;
-    justify-content: center !important;
-    align-items: center !important;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
     padding: 10px 16px !important;
     border-radius: 8px !important;
     border: none !important;
     font-size: 14px !important;
     font-weight: 500 !important;
-    cursor: pointer !important;
-    transition: all 0.2s ease !important;
-    white-space: nowrap !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
     background-color: var(--bl-accent-color) !important;
     color: white !important;
 }
 
 #bl-purifier-popup .bl-add-btn:hover {
     background-color: var(--bl-accent-color-hover) !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 4px 10px rgba(148, 0, 211, 0.2) !important;
+    transform: translateY(-2px);
 }
 
-/* --- 6. 屏蔽词列表区 (复刻 .limiter-setting-item 风格与次级背景) --- */
+/* --- 屏蔽词列表区 --- */
 #bl-purifier-popup #bl-tags-container {
-    max-height: 200px !important;
-    overflow-y: auto !important;
-    padding: 15px !important;
-    background: var(--bl-background-secondary) !important;
-    border-radius: 8px !important;
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 10px !important;
-    align-items: flex-start !important;
-    align-content: flex-start !important;
-    
-    /* 隐藏原生滚动条 */
-    scrollbar-width: none !important; 
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 15px;
+    background: var(--bl-background-secondary);
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+    align-content: flex-start;
+    scrollbar-width: none; 
 }
 
 #bl-purifier-popup #bl-tags-container::-webkit-scrollbar {
-    display: none !important; 
+    display: none; 
 }
 
-/* 单个词条标签 (复刻 button-like) */
 #bl-purifier-popup .bl-tag {
-    display: inline-flex !important;
-    align-items: center !important;
-    padding: 6px 12px !important;
-    border-radius: 6px !important;
-    background-color: var(--bl-input-bg) !important;
-    color: var(--bl-text-primary) !important;
-    font-weight: 500 !important;
-    border: 1px solid var(--bl-border-color) !important;
-    font-size: 13px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
-    transition: border-color 0.2s ease !important;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background-color: var(--bl-input-bg);
+    color: var(--bl-text-primary);
+    font-weight: 500;
+    border: 1px solid var(--bl-border-color);
+    font-size: 13px;
+    transition: border-color 0.2s ease;
 }
 
 #bl-purifier-popup .bl-tag:hover {
-    border-color: var(--bl-danger-color) !important;
+    border-color: var(--bl-danger-color);
 }
 
-/* 词条删除叉号 */
 #bl-purifier-popup .bl-tag span {
-    margin-left: 8px !important;
-    color: var(--bl-text-secondary) !important;
-    cursor: pointer !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-    line-height: 1 !important;
-    transition: color 0.2s ease !important;
+    margin-left: 8px;
+    color: var(--bl-text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    line-height: 1;
+    transition: color 0.2s ease;
 }
 
 #bl-purifier-popup .bl-tag span:hover {
-    color: var(--bl-danger-color) !important;
-}
-
-/* --- 7. 手机端极限防御性微调 --- */
-@media screen and (max-width: 600px) {
-    #bl-purifier-popup {
-        padding: 15px 20px !important;
-        width: 92% !important;
-        /* 强制手机端重新声明居中，防键盘挤压 */
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-    }
-    
-    #bl-purifier-popup .bl-input {
-        font-size: 14px !important;
-        padding: 8px 12px !important;
-    }
-    
-    #bl-purifier-popup .bl-add-btn {
-        padding: 8px 14px !important;
-    }
+    color: var(--bl-danger-color);
 }
