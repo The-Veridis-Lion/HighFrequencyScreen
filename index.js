@@ -12,11 +12,11 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 🛡️ 核心黑科技 1：全频段 DOM 净化器 (文本 + 注释 + 表格控件)
+// 🛡️ 核心黑科技 1：全频段 DOM 净化器 (修复 querySelectorAll 的“灯下黑”盲区)
 function purifyDOM(rootNode, regex) {
     if (!rootNode) return;
 
-    // 1. 扫描所有的文本节点(3) 和 HTML注释节点(8) -> 解决 藏毒问题
+    // 1. 净化文本和注释节点 (解决 问题)
     const walker = document.createTreeWalker(
         rootNode, 
         NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, 
@@ -26,42 +26,57 @@ function purifyDOM(rootNode, regex) {
     
     let node;
     while (node = walker.nextNode()) {
-        if (node.nodeType === 3) { // 文本节点
-            const parent = node.parentNode;
-            
-            // 【取消一刀切的免死金牌】
-            if (parent) {
-                // 永远放过主聊天输入框和酒馆默认编辑框
-                if (parent.id === 'send_textarea' || (parent.classList && parent.classList.contains('edit_textarea'))) continue;
-                // 只有当用户正在“激活/聚焦”这个单元格时才放过它，防止光标乱跳
-                if (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))) continue;
-            }
+        const parent = node.parentNode;
+        
+        if (parent) {
+            // 放过主输入框，防止打字断触
+            if (parent.id === 'send_textarea' || (parent.classList && parent.classList.contains('edit_textarea'))) continue;
+            // 如果你正点在这个格子里，暂时放过它，防止光标乱跳
+            if (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))) continue;
+        }
 
-            const original = node.nodeValue;
-            const cleaned = original.replace(regex, '');
-            if (original !== cleaned) node.nodeValue = cleaned;
-            
-        } else if (node.nodeType === 8) { // 注释节点 const original = node.nodeValue;
-            const cleaned = original.replace(regex, '');
-            if (original !== cleaned) node.nodeValue = cleaned;
+        const original = node.nodeValue || '';
+        const cleaned = original.replace(regex, '');
+        if (original !== cleaned) {
+            node.nodeValue = cleaned;
         }
     }
 
-    // 2. 如果表格用的是真正的 <input> 框，直接洗刷 value
-    if (rootNode.nodeType === 1 && rootNode.querySelectorAll) {
-        const inputs = rootNode.querySelectorAll('input, textarea');
+    // 2. 净化输入框 (Input/Textarea) 的 value
+    if (rootNode.nodeType === 1) {
+        let inputs = [];
+        
+        // 关键修复：如果表格插件塞进来的元素【自己本身】就是 input，老代码会把它漏掉！
+        if (rootNode.matches && rootNode.matches('input, textarea')) {
+            inputs.push(rootNode);
+        }
+        // 再搜查它的子孙节点
+        if (rootNode.querySelectorAll) {
+            inputs.push(...Array.from(rootNode.querySelectorAll('input, textarea')));
+        }
+
         inputs.forEach(input => {
             if (input.id === 'send_textarea' || input.classList.contains('edit_textarea')) return;
-            if (document.activeElement === input) return; // 正在输入则跳过
+            if (document.activeElement === input) return; 
             
-            if (input.value && input.value.match(regex)) {
-                input.value = input.value.replace(regex, '');
+            // 检查 value 属性
+            const originalVal = input.value || '';
+            const cleanedVal = originalVal.replace(regex, '');
+            if (originalVal !== cleanedVal) {
+                input.value = cleanedVal;
+            }
+
+            // 检查隐藏的 HTML 属性 (某些表格插件会把数据备份在 attribute 里)
+            const attrVal = input.getAttribute('value') || '';
+            const cleanedAttr = attrVal.replace(regex, '');
+            if (attrVal !== cleanedAttr) {
+                input.setAttribute('value', cleanedAttr);
             }
         });
     }
 }
 
-// 日常内存及全屏清理
+// 日常内存清理
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -69,66 +84,95 @@ function performGlobalCleanse() {
     let chatChanged = false;
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach(msg => {
-            if (msg.mes && msg.mes.match(regex)) {
-                msg.mes = msg.mes.replace(regex, '');
-                chatChanged = true;
+            if (msg.mes) {
+                const cleaned = msg.mes.replace(regex, '');
+                if (msg.mes !== cleaned) {
+                    msg.mes = cleaned;
+                    chatChanged = true;
+                }
             }
         });
     }
     if (chatChanged) saveChat(); 
 
-    // 将净化范围扩大到整个 DOM (包含表格和思维链)
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-// 🛡️ 核心黑科技 2：实时防空系统
+// 🛡️ 核心黑科技 2：增强版实时防空系统
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
         if (!regex) return;
         
         mutations.forEach(m => {
+            // 拦截新增节点
             m.addedNodes.forEach(node => {
-                if (node.nodeType === 3 || node.nodeType === 8) { // 拦截刚生成的文本和注释
-                    const cleaned = node.nodeValue.replace(regex, '');
-                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
-                } else if (node.nodeType === 1) { // 拦截刚生成的表格/思维链元素
+                if (node.nodeType === 3 || node.nodeType === 8) { 
+                    const original = node.nodeValue || '';
+                    const cleaned = original.replace(regex, '');
+                    if (original !== cleaned) node.nodeValue = cleaned;
+                } else if (node.nodeType === 1) { 
                     purifyDOM(node, regex);
                 }
             });
-            // 拦截流式输出过程中的变动
+            
+            // 拦截文本流式跳动
             if (m.type === 'characterData') {
-                const cleaned = m.target.nodeValue.replace(regex, '');
-                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
+                const original = m.target.nodeValue || '';
+                const cleaned = original.replace(regex, '');
+                if (original !== cleaned) m.target.nodeValue = cleaned;
+            }
+
+            // 【关键修复 2】：拦截表格插件用 JS 悄悄修改 input 的 value
+            if (m.type === 'attributes' && (m.attributeName === 'value' || m.attributeName === 'innerHTML')) {
+                const el = m.target;
+                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                    if (document.activeElement !== el) {
+                        const original = el.value || '';
+                        const cleaned = original.replace(regex, '');
+                        if (original !== cleaned) el.value = cleaned;
+                    }
+                }
             }
         });
     });
 
     const chatEl = document.getElementById('chat');
     if (chatEl) {
-        chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true });
+        // 增加 attributes 监控，专抓表格插件的属性暗改
+        chatObserver.observe(chatEl, { 
+            childList: true, 
+            subtree: true, 
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['value', 'innerHTML']
+        });
     }
 
-    // 监听键盘打字输入 (用于清剿你试图在表格里打出来的脏字)
+    // 打字拦截
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
-            let val = e.target.value || e.target.innerText;
-            if (val && val.match(regex)) {
+            let val = e.target.value;
+            if (val === undefined) val = e.target.innerText;
+            
+            if (val) {
                 const cleaned = val.replace(regex, '');
-                if (e.target.value !== undefined) {
-                    const pos = e.target.selectionStart;
-                    e.target.value = cleaned;
-                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
-                } else {
-                    e.target.innerText = cleaned;
+                if (val !== cleaned) {
+                    if (e.target.value !== undefined) {
+                        const pos = e.target.selectionStart;
+                        e.target.value = cleaned;
+                        try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
+                    } else {
+                        e.target.innerText = cleaned;
+                    }
                 }
             }
         }
     }, true);
 }
 
-// 构建 UI (保持原样)
+// 构建 UI (纯净原版)
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
@@ -189,7 +233,7 @@ jQuery(() => {
     const boot = () => {
         setupUI();
         bindEvents();
-        initRealtimeInterceptor(); // 开启增强版实时防空导弹
+        initRealtimeInterceptor(); 
         performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
