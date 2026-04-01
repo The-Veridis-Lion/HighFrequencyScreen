@@ -1,189 +1,126 @@
-import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat } from "../../../../script.js";
-
-const extensionName = "ultimate_purifier";
-const defaultSettings = { bannedWords: [] };
-
-function getPurifyRegex() {
-    const words = extension_settings[extensionName]?.bannedWords || [];
-    if (!words.length) return null;
-    const sorted = [...words].sort((a, b) => b.length - a.length);
-    const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    return new RegExp(`(${escaped.join('|')})`, 'gmu');
+/* --- 核心变量定义区 --- */
+:root {
+    --bl-accent-color: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 0.7));
+    --bl-accent-color-hover: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 1));
+    --bl-danger-color: #ff4757;
+    --bl-background-popup: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 1)); 
+    --bl-background-secondary: rgba(0, 0, 0, 0.05);
+    --bl-border-color: var(--SmartThemeBorderColor, #dee2e6);
+    --bl-text-primary: var(--SmartThemeBodyColor, #343a40); 
+    --bl-text-secondary: #868e96; 
+    --bl-input-bg: var(--SmartThemeInputBackground, #ffffff); 
 }
 
-// 日常轻量级净化（仅限当前屏幕的显示更新）
-function performGlobalCleanse() {
-    const regex = getPurifyRegex();
-    if (!regex) return;
+/* --- 侧边栏入口按钮 --- */
+#bl-wand-btn { cursor: pointer !important; }
 
-    let chatChanged = false;
-    if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach(msg => {
-            if (msg.mes && regex.test(msg.mes)) {
-                msg.mes = msg.mes.replace(regex, '');
-                chatChanged = true;
-            }
-        });
-    }
-    if (chatChanged) saveChat(); 
-
-    $('.mes_text').each(function() {
-        const html = $(this).html();
-        if (regex.test(html)) $(this).html(html.replace(regex, ''));
-    });
-}
-
-// --- 新增：核弹级深度净化（一键扫描所有历史记录与废稿分支） ---
-function performDeepCleanse() {
-    const regex = getPurifyRegex();
-    if (!regex) {
-        toastr.info("请先添加屏蔽词。");
-        return;
-    }
-
-    if (!window.chat || !Array.isArray(window.chat)) {
-        toastr.error("未能获取到历史聊天数据。");
-        return;
-    }
-
-    let modifiedMsgCount = 0;
-    let removedWordCount = 0;
-
-    // 遍历硬盘加载到内存里的完整聊天记录
-    window.chat.forEach(msg => {
-        let isMsgChanged = false;
-
-        // 1. 清理主消息内容
-        if (msg.mes && regex.test(msg.mes)) {
-            const matches = msg.mes.match(regex);
-            removedWordCount += matches ? matches.length : 0;
-            msg.mes = msg.mes.replace(regex, '');
-            isMsgChanged = true;
-        }
-
-        // 2. 清理所有隐藏的滑动分支 (Swipes / 废稿)
-        if (msg.swipes && Array.isArray(msg.swipes)) {
-            msg.swipes.forEach((swipeText, idx) => {
-                if (swipeText && regex.test(swipeText)) {
-                    const matches = swipeText.match(regex);
-                    removedWordCount += matches ? matches.length : 0;
-                    msg.swipes[idx] = swipeText.replace(regex, '');
-                    isMsgChanged = true;
-                }
-            });
-        }
-
-        if (isMsgChanged) {
-            modifiedMsgCount++;
-        }
-    });
-
-    if (removedWordCount > 0) {
-        // 保存到硬盘 .jsonl 文件
-        saveChat(); 
-        
-        // 弹出系统提示
-        toastr.success(`深度净化完成！<br>共修改了 <b>${modifiedMsgCount}</b> 条记录，<br>物理抹除了 <b>${removedWordCount}</b> 个违禁词。<br>正在刷新页面同步显示...`, "净化成功", {timeOut: 2500, html: true});
-        
-        // 延迟刷新页面，确保视觉上彻底干净，不会出现滚动后重新加载旧词的情况
-        setTimeout(() => location.reload(), 2500);
-    } else {
-        toastr.info("完美！全量历史记录中未发现任何屏蔽词。");
-    }
-}
-
-function initEditInterceptor() {
-    const observer = new MutationObserver(() => {
-        const regex = getPurifyRegex();
-        if (!regex) return;
-        $('.edit_textarea').each(function() {
-            if (regex.test(this.value)) this.value = this.value.replace(regex, '');
-        });
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    document.addEventListener('input', (e) => {
-        const regex = getPurifyRegex();
-        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-            if (regex.test(e.target.value)) {
-                const pos = e.target.selectionStart;
-                e.target.value = e.target.value.replace(regex, '');
-                e.target.selectionStart = e.target.selectionEnd = pos;
-            }
-        }
-    }, true);
-}
-
-function setupUI() {
-    if (!$('#bl-wand-btn').length) {
-        $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="屏蔽词汇">
-                <i class="fa-solid fa-eraser fa-fw"></i><span>屏蔽词汇</span>
-            </div>`);
-    }
-    if (!$('#bl-purifier-popup').length) {
-        // 在原有弹窗底部加入了 bl-footer 区域
-        $('body').append(`
-            <div id="bl-purifier-popup">
-                <div class="bl-header"><h3 class="bl-title">屏蔽词汇管理</h3><button id="bl-close-btn" class="bl-close">&times;</button></div>
-                <div class="bl-input-group"><input type="text" id="bl-input-field" class="bl-input" placeholder="输入屏蔽词..."><button id="bl-add-btn" class="bl-add-btn">添加</button></div>
-                <div id="bl-tags-container"></div>
-                <div class="bl-footer">
-                    <button id="bl-clean-all-btn" class="bl-clean-all-btn" title="深度扫描并清理聊天记录和隐藏分支">
-                        <i class="fa-solid fa-burst"></i> 一键净化全记录
-                    </button>
-                </div>
-            </div>`);
-    }
-}
-
-function bindEvents() {
-    $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
-    $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
+/* --- 弹窗主体 (手机端安全区固定) --- */
+#bl-purifier-popup {
+    position: fixed !important;
+    top: 10vh !important; 
+    left: 50% !important;
+    transform: translateX(-50%) !important; 
     
-    $(document).on('click', '#bl-add-btn', () => {
-        const val = $('#bl-input-field').val().trim();
-        if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
-            extension_settings[extensionName].bannedWords.push(val);
-            $('#bl-input-field').val('');
-            saveSettingsDebounced();
-            renderTags();
-            performGlobalCleanse(); 
-        }
-    });
-
-    $(document).on('click', '.bl-tag span', function() {
-        extension_settings[extensionName].bannedWords.splice($(this).data('index'), 1);
-        saveSettingsDebounced();
-        renderTags();
-    });
-
-    // 绑定核弹按钮事件
-    $(document).on('click', '#bl-clean-all-btn', () => {
-        performDeepCleanse();
-    });
-
-    eventSource.on(event_types.MESSAGE_EDITED, () => setTimeout(performGlobalCleanse, 100));
-    eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
-    eventSource.on(event_types.CHAT_CHANGED, performGlobalCleanse);
+    width: 90% !important;
+    max-width: 420px !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important; 
+    
+    background: var(--bl-background-popup) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    border-radius: 12px !important;
+    z-index: 999999 !important;
+    padding: 20px 25px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+    
+    display: none; 
+    flex-direction: column !important;
+    gap: 15px !important;
+    box-sizing: border-box !important;
+    
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    animation: blFadeIn 0.3s ease-out !important;
 }
 
-function renderTags() {
-    const words = extension_settings[extensionName].bannedWords || [];
-    $('#bl-tags-container').html(words.map((w, i) => `<div class="bl-tag">${w}<span data-index="${i}">&times;</span></div>`).join('') || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px;">空</div>');
+@keyframes blFadeIn {
+    from { opacity: 0; transform: translateX(-50%) scale(0.95); }
+    to { opacity: 1; transform: translateX(-50%) scale(1); }
 }
 
-jQuery(() => {
-    extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
-    const boot = () => {
-        setupUI();
-        bindEvents();
-        initEditInterceptor();
-        performGlobalCleanse(); 
-    };
-    if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
-        eventSource.on(event_types.APP_READY, boot);
-        if (document.getElementById('send_textarea')) boot();
+/* --- 头部区 --- */
+#bl-purifier-popup .bl-header {
+    display: flex !important; justify-content: space-between !important; align-items: center !important;
+    padding-bottom: 12px !important; border-bottom: 1px solid var(--bl-border-color) !important; margin: 0 !important;
+}
+#bl-purifier-popup .bl-title { font-size: 18px !important; font-weight: bold !important; margin: 0 !important; color: var(--bl-text-primary) !important; }
+#bl-purifier-popup .bl-close {
+    background: none !important; border: none !important; color: var(--bl-text-secondary) !important;
+    font-size: 28px !important; line-height: 1 !important; cursor: pointer !important; transition: color 0.2s ease !important;
+    padding: 0 !important; margin-left: 10px !important;
+}
+#bl-purifier-popup .bl-close:hover { color: var(--bl-danger-color) !important; }
+
+/* --- 输入区 --- */
+#bl-purifier-popup .bl-input-group { display: flex !important; gap: 10px !important; width: 100% !important; }
+#bl-purifier-popup .bl-input {
+    flex: 1 !important; width: 100% !important; padding: 10px 15px !important; border-radius: 8px !important;
+    border: 1px solid var(--bl-border-color) !important; background-color: var(--bl-input-bg) !important;
+    color: var(--bl-text-primary) !important; font-size: 16px !important; box-sizing: border-box !important; outline: none !important;
+}
+#bl-purifier-popup .bl-input:focus { border-color: var(--bl-accent-color) !important; }
+#bl-purifier-popup .bl-add-btn {
+    display: inline-flex !important; justify-content: center !important; align-items: center !important;
+    padding: 10px 16px !important; border-radius: 8px !important; border: none !important; font-size: 14px !important; font-weight: 500 !important;
+    cursor: pointer !important; white-space: nowrap !important; background-color: var(--bl-accent-color) !important; color: white !important;
+}
+
+/* --- 列表区 --- */
+#bl-purifier-popup #bl-tags-container {
+    max-height: 160px !important; overflow-y: auto !important; padding: 15px !important;
+    background: var(--bl-background-secondary) !important; border-radius: 8px !important; display: flex !important; flex-wrap: wrap !important; gap: 10px !important;
+    scrollbar-width: none !important; 
+}
+#bl-purifier-popup #bl-tags-container::-webkit-scrollbar { display: none !important; }
+#bl-purifier-popup .bl-tag {
+    display: inline-flex !important; align-items: center !important; padding: 6px 12px !important; border-radius: 6px !important;
+    background-color: var(--bl-input-bg) !important; color: var(--bl-text-primary) !important; font-weight: 500 !important;
+    border: 1px solid var(--bl-border-color) !important; font-size: 13px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+#bl-purifier-popup .bl-tag span { margin-left: 8px !important; color: var(--bl-text-secondary) !important; cursor: pointer !important; font-size: 16px !important; font-weight: bold !important; line-height: 1 !important; }
+#bl-purifier-popup .bl-tag span:hover { color: var(--bl-danger-color) !important; }
+
+/* --- 新增：底部一键清理区 --- */
+#bl-purifier-popup .bl-footer {
+    margin-top: 5px !important;
+    padding-top: 15px !important;
+    border-top: 1px solid var(--bl-border-color) !important;
+}
+#bl-purifier-popup .bl-deep-clean-btn {
+    width: 100% !important;
+    padding: 12px !important;
+    background: var(--bl-danger-color) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+#bl-purifier-popup .bl-deep-clean-btn:hover { opacity: 0.8 !important; }
+
+/* --- 手机端微调 --- */
+@media screen and (max-width: 600px) {
+    #bl-purifier-popup {
+        padding: 15px 20px !important;
+        width: 92% !important;
+        top: 15vh !important; /* 绝对安全，不会跑出屏幕 */
     }
-});
+    #bl-purifier-popup .bl-input { font-size: 14px !important; padding: 8px 12px !important; }
+    #bl-purifier-popup .bl-add-btn { padding: 8px 14px !important; }
+}
