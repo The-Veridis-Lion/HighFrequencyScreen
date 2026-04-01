@@ -12,13 +12,13 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// ☢️ 核心黑科技 1：防崩溃深度洗刷
+// ☢️ 核心黑科技 1：防崩溃深度洗刷 (绝对免疫循环引用报错)
 function safeDeepScrub(rootObj, regex) {
     let changes = 0;
     if (!rootObj || typeof rootObj !== 'object') return changes;
     
     const stack = [rootObj];
-    const seen = new Set(); 
+    const seen = new Set(); // 记忆集：防止在循环引用中无限死循环或内存溢出
 
     while (stack.length > 0) {
         const current = stack.pop();
@@ -37,11 +37,13 @@ function safeDeepScrub(rootObj, regex) {
                             changes++;
                         }
                     } else if (val !== null && typeof val === 'object') {
-                        stack.push(val); 
+                        stack.push(val); // 继续向下深挖
                     }
                 }
             }
-        } catch(e) { }
+        } catch(e) {
+            // 碰到浏览器受保护的底层对象，直接忽略，不让代码崩溃
+        }
     }
     return changes;
 }
@@ -114,7 +116,7 @@ function performGlobalCleanse() {
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-// 💥 【深度屏蔽】无缝体验版（不再强制刷新）
+// 💥 【深度屏蔽】手动触发，穿透三大数据库
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) {
@@ -123,39 +125,45 @@ async function performDeepCleanse() {
     }
 
     $('body').append(`
-        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
+        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
             <h2 style="margin-bottom:20px;font-size:24px;">☢️ 正在执行深度屏蔽...</h2>
-            <p style="color:#ff6b6b;font-weight:bold;">正在穿透三大数据库抹除隐秘残留，请稍候...</p>
+            <p style="color:#ff6b6b;font-weight:bold;">正在强制穿透三大数据库，抹除所有隐秘残留，请勿操作！</p>
         </div>
     `);
 
+    // 给遮罩层一点渲染时间
     await new Promise(r => setTimeout(r, 100));
 
     try {
         let scrubbedItems = 0;
 
+        // 1. 穿透洗刷主聊天记录 (window.chat)
         if (window.chat && Array.isArray(window.chat)) {
             scrubbedItems += safeDeepScrub(window.chat, regex);
         }
+
+        // 2. 穿透洗刷单聊元数据金库 (chat_metadata)
         if (typeof chat_metadata === 'object' && chat_metadata !== null) {
             scrubbedItems += safeDeepScrub(chat_metadata, regex);
         }
+
+        // 3. 穿透洗刷全局扩展金库 (extension_settings)
         if (typeof extension_settings === 'object' && extension_settings !== null) {
             scrubbedItems += safeDeepScrub(extension_settings, regex);
         }
 
         if (scrubbedItems > 0) {
-            // 同步清理当前屏幕，避免刷新
-            purifyDOM(document.getElementById('chat'), regex);
-
+            // 双重发包：强制写入硬盘
             const saveChatPromise = saveChat();
             if (saveChatPromise instanceof Promise) await saveChatPromise;
             saveSettingsDebounced(); 
             
-            await new Promise(r => setTimeout(r, 500)); // 缩短等待时间，因为不刷新了
+            // 给硬盘写入留时间
+            await new Promise(r => setTimeout(r, 2000));
             
             $('#bl-loading-overlay').remove();
-            alert(`✅ 深度屏蔽成功！\n\n共清剿了 ${scrubbedItems} 处隐秘的屏蔽词残留。\n（界面已自动同步，无需刷新）`);
+            alert(`✅ 深度屏蔽成功！\n\n已成功穿透防线，共清剿了 ${scrubbedItems} 处隐秘的屏蔽词残留（包括隐藏表格数据）。\n\n点击确定后网页将刷新。`);
+            location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
             alert("三大数据库均已干净，未发现屏蔽词！");
@@ -265,21 +273,12 @@ function setupUI() {
     }
 }
 
-// 绑定事件（核心修复：加入 .off() 防止重复绑定，解决弹窗出两次的问题）
+// 绑定事件
 function bindEvents() {
-    // 侧边栏按钮：打开弹窗
-    $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { 
-        renderTags(); 
-        $('#bl-purifier-popup').fadeIn(200); 
-    });
+    $(document).on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
+    $(document).on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
     
-    // 关闭按钮
-    $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => { 
-        $('#bl-purifier-popup').fadeOut(200); 
-    });
-    
-    // 添加屏蔽词按钮
-    $(document).off('click', '#bl-add-btn').on('click', '#bl-add-btn', () => {
+    $(document).on('click', '#bl-add-btn', () => {
         const val = $('#bl-input-field').val().trim();
         if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
             extension_settings[extensionName].bannedWords.push(val);
@@ -290,24 +289,18 @@ function bindEvents() {
         }
     });
 
-    // 删除屏蔽词标签
-    $(document).off('click', '.bl-tag span').on('click', '.bl-tag span', function() {
+    $(document).on('click', '.bl-tag span', function() {
         extension_settings[extensionName].bannedWords.splice($(this).data('index'), 1);
         saveSettingsDebounced();
         renderTags();
     });
 
-    // 深度屏蔽按钮
-    $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
+    // 绑定深度屏蔽
+    $(document).on('click', '#bl-deep-clean-btn', () => {
         if(confirm("警告：此操作将重构主聊天库、元数据以及扩展全局缓存！\n专治各种顽固表格插件，确定执行吗？")) {
             performDeepCleanse();
         }
     });
-
-    // 确保不重复绑定酒馆的核心生成事件
-    eventSource.removeListener(event_types.MESSAGE_EDITED, performGlobalCleanse);
-    eventSource.removeListener(event_types.GENERATION_ENDED, performGlobalCleanse);
-    eventSource.removeListener(event_types.CHAT_CHANGED, performGlobalCleanse);
 
     eventSource.on(event_types.MESSAGE_EDITED, () => setTimeout(performGlobalCleanse, 100));
     eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
@@ -319,21 +312,14 @@ function renderTags() {
     $('#bl-tags-container').html(words.map((w, i) => `<div class="bl-tag">${w}<span data-index="${i}">&times;</span></div>`).join('') || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px;">空</div>');
 }
 
-// 只在首次加载时启动一次
-let isBooted = false;
 jQuery(() => {
-    if (isBooted) return;
-    
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
     const boot = () => {
-        if (isBooted) return;
-        isBooted = true;
         setupUI();
         bindEvents();
         initRealtimeInterceptor(); 
         performGlobalCleanse(); 
     };
-    
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
         if (document.getElementById('send_textarea')) boot();
