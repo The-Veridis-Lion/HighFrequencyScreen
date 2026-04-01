@@ -114,12 +114,12 @@
 }
 #bl-purifier-popup .bl-deep-clean-btn:hover { opacity: 0.8 !important; }
 
-/* --- 手机端极限微调 (确保按钮不超出屏幕) --- */
+/* --- 手机端微调 (确保按钮不超出屏幕) --- */
 @media screen and (max-width: 600px) {
     #bl-purifier-popup { 
         padding: 15px 20px !important; 
         width: 92% !important; 
-        top: 10vh !important; 
+        top: 15vh !important; 
         transform: translateX(-50%) !important; 
     }
     #bl-purifier-popup .bl-input { font-size: 14px !important; padding: 8px 12px !important; }
