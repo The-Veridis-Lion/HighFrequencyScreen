@@ -1,5 +1,4 @@
 import { extension_settings } from "../../../extensions.js";
-// 引入 chat_metadata 用于清理表格私密金库
 import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
@@ -13,7 +12,43 @@ function getPurifyRegex() {
     return new RegExp(`(${escaped.join('|')})`, 'gmu');
 }
 
-// 🛡️ 核心黑科技 1：全频段 DOM 净化器
+// ☢️ 核心黑科技 1：防崩溃深度洗刷 (绝对免疫循环引用报错)
+function safeDeepScrub(rootObj, regex) {
+    let changes = 0;
+    if (!rootObj || typeof rootObj !== 'object') return changes;
+    
+    const stack = [rootObj];
+    const seen = new Set(); // 记忆集：防止在循环引用中无限死循环或内存溢出
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        
+        if (seen.has(current)) continue;
+        seen.add(current);
+
+        try {
+            for (let key in current) {
+                if (Object.prototype.hasOwnProperty.call(current, key)) {
+                    const val = current[key];
+                    if (typeof val === 'string') {
+                        const cleaned = val.replace(regex, '');
+                        if (val !== cleaned) {
+                            current[key] = cleaned;
+                            changes++;
+                        }
+                    } else if (val !== null && typeof val === 'object') {
+                        stack.push(val); // 继续向下深挖
+                    }
+                }
+            }
+        } catch(e) {
+            // 碰到浏览器受保护的底层对象，直接忽略，不让代码崩溃
+        }
+    }
+    return changes;
+}
+
+// 🛡️ 核心黑科技 2：全频段 DOM 净化器
 function purifyDOM(rootNode, regex) {
     if (!rootNode) return;
 
@@ -59,7 +94,7 @@ function purifyDOM(rootNode, regex) {
     }
 }
 
-// 日常内存及全屏清理
+// 日常打字防复读
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -81,7 +116,7 @@ function performGlobalCleanse() {
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-// 💥 【新增】深度屏蔽功能 (三相弹扫除法)
+// 💥 【深度屏蔽】手动触发，穿透三大数据库
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) {
@@ -92,43 +127,42 @@ async function performDeepCleanse() {
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
             <h2 style="margin-bottom:20px;font-size:24px;">☢️ 正在执行深度屏蔽...</h2>
-            <p style="color:#ff6b6b;font-weight:bold;">正在强制摧毁主聊天、元数据及扩展缓存中的屏蔽词，请勿操作！</p>
+            <p style="color:#ff6b6b;font-weight:bold;">正在强制穿透三大数据库，抹除所有隐秘残留，请勿操作！</p>
         </div>
     `);
 
+    // 给遮罩层一点渲染时间
     await new Promise(r => setTimeout(r, 100));
 
     try {
-        let chatString = JSON.stringify(window.chat || []);
-        let metaString = JSON.stringify(chat_metadata || {});
-        let extString = JSON.stringify(extension_settings || {});
+        let scrubbedItems = 0;
 
-        const totalLengthBefore = chatString.length + metaString.length + extString.length;
+        // 1. 穿透洗刷主聊天记录 (window.chat)
+        if (window.chat && Array.isArray(window.chat)) {
+            scrubbedItems += safeDeepScrub(window.chat, regex);
+        }
 
-        chatString = chatString.replace(regex, '');
-        metaString = metaString.replace(regex, '');
-        extString = extString.replace(regex, '');
+        // 2. 穿透洗刷单聊元数据金库 (chat_metadata)
+        if (typeof chat_metadata === 'object' && chat_metadata !== null) {
+            scrubbedItems += safeDeepScrub(chat_metadata, regex);
+        }
 
-        const totalLengthAfter = chatString.length + metaString.length + extString.length;
+        // 3. 穿透洗刷全局扩展金库 (extension_settings)
+        if (typeof extension_settings === 'object' && extension_settings !== null) {
+            scrubbedItems += safeDeepScrub(extension_settings, regex);
+        }
 
-        if (totalLengthBefore !== totalLengthAfter) {
-            window.chat.splice(0, window.chat.length, ...JSON.parse(chatString));
-            
-            const parsedMeta = JSON.parse(metaString);
-            for (let key in parsedMeta) { chat_metadata[key] = parsedMeta[key]; }
-            
-            const parsedExt = JSON.parse(extString);
-            for (let key in parsedExt) { extension_settings[key] = parsedExt[key]; }
-
+        if (scrubbedItems > 0) {
+            // 双重发包：强制写入硬盘
             const saveChatPromise = saveChat();
             if (saveChatPromise instanceof Promise) await saveChatPromise;
             saveSettingsDebounced(); 
             
+            // 给硬盘写入留时间
             await new Promise(r => setTimeout(r, 2000));
             
             $('#bl-loading-overlay').remove();
-            const diff = totalLengthBefore - totalLengthAfter;
-            alert(`✅ 深度屏蔽成功！\n\n已强制蒸发了 ${diff} 个屏蔽字符（含隐藏表格数据）。\n\n点击确定后网页将刷新。`);
+            alert(`✅ 深度屏蔽成功！\n\n已成功穿透防线，共清剿了 ${scrubbedItems} 处隐秘的屏蔽词残留（包括隐藏表格数据）。\n\n点击确定后网页将刷新。`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
@@ -137,11 +171,11 @@ async function performDeepCleanse() {
     } catch (e) {
         console.error("深度屏蔽失败:", e);
         $('#bl-loading-overlay').remove();
-        alert("操作失败！请按 F12 检查控制台。");
+        alert("操作发生未知错误，详情请按 F12 检查控制台。");
     }
 }
 
-// 🛡️ 核心黑科技 2：实时防空系统
+// 🛡️ 增强版实时防空系统
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
@@ -261,9 +295,9 @@ function bindEvents() {
         renderTags();
     });
 
-    // 绑定深度屏蔽点击事件
+    // 绑定深度屏蔽
     $(document).on('click', '#bl-deep-clean-btn', () => {
-        if(confirm("警告：此操作将重构聊天库、元数据以及扩展全局缓存！\n专治各种顽固表格插件，确定执行吗？")) {
+        if(confirm("警告：此操作将重构主聊天库、元数据以及扩展全局缓存！\n专治各种顽固表格插件，确定执行吗？")) {
             performDeepCleanse();
         }
     });
