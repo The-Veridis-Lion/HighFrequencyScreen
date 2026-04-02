@@ -282,17 +282,21 @@ function bindEvents() {
 function renderTags() {
     const rules = extension_settings[extensionName].rules || [];
     const html = rules.map((r, i) => {
-        const tPreview = r.targets.slice(0, 2).join(', ') + (r.targets.length > 2 ? '...' : '');
-        const rPreview = r.replacements.length > 0 ? (r.replacements.slice(0, 2).join(', ') + (r.replacements.length > 2 ? '...' : '')) : '直接删除';
+        // 取消截断限制，直接获取完整字符串
+        const fullTargets = r.targets.join(', ');
+        const fullReps = r.replacements.length > 0 ? r.replacements.join(', ') : '无 (直接删除)';
         
-        // 修复：使用了 <b> 和 <div> 替代 span，完美避开旧版 CSS 污染，并修正了类名错误
-        return `<div class="bl-tag" title="目标:\n${r.targets.join(', ')}\n\n替换为:\n${r.replacements.length > 0 ? r.replacements.join(', ') : '无 (删除)'}">
-            <div class="bl-tag-content" style="font-size: 13px;">
-                <b style="color:var(--bl-danger-color)">${tPreview}</b> 
-                <font style="color:var(--bl-text-primary); margin: 0 6px;">➔</font> 
-                <b style="color:var(--bl-accent-color)">${rPreview}</b>
+        return `<div class="bl-tag" title="目标:\n${fullTargets}\n\n替换为:\n${fullReps}">
+            <div class="bl-tag-layout">
+                <div class="bl-tag-scroll-box bl-tag-left">
+                    <b style="color:var(--bl-danger-color)">${fullTargets}</b>
+                </div>
+                <div class="bl-tag-arrow">➔</div>
+                <div class="bl-tag-scroll-box bl-tag-right">
+                    <b style="color:var(--bl-accent-color)">${fullReps}</b>
+                </div>
             </div>
-            <div class="bl-tag-del" data-index="${i}" style="cursor:pointer; font-size:18px; font-weight:bold; color:var(--bl-text-secondary); line-height:1;">&times;</div>
+            <div class="bl-tag-del" data-index="${i}" title="删除规则">&times;</div>
         </div>`;
     }).join('');
     
