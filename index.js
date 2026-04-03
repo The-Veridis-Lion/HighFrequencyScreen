@@ -61,7 +61,7 @@ function dynamicReplacer(match) {
 }
 
 /**
- * 递归洗刷对象 (已加入智能键名白名单，保护预设)
+ * 递归洗刷对象 (已加入全量智能键名白名单，完美保护预设)
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
@@ -69,21 +69,17 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     const stack = [rootObj];
     const seen = new Set(); 
 
-    // ST 核心与各大扩展的“预设/规则”键名白名单
+    // 【核心扩充】：囊括了 SillyTavern 所有的设定、卡片、高级格式化预设键名！
     const protectedKeys = new Set([
-        'prompt_manager',           // 保护 Prompt Manager 
-        'regex',                    // 保护 Regex (正则扩展)
-        'quick-reply',              // 保护 Quick Reply (快捷回复)
-        'system_prompt',            // 保护全局系统预设
-        'system_prompt_override',   // 保护当前聊天的覆盖预设
-        'authors_note',             // 保护作者备注
-        'prompt',                   // 保护各种插件中通用的 prompt 字段
-        'description',              // 保护角色卡片主设定
-        'personality',              // 保护角色性格
-        'first_mes',                // 保护角色第一条消息
-        'mesExamples',              // 保护对话示例
-        'creator_notes',            // 保护创作者备注
-        'alternate_greetings'       // 保护备用问候语
+        extensionName,
+        'prompt_manager', 'regex', 'quick-reply',
+        'system_prompt', 'system_prompt_override', 'authors_note',
+        'prompt', 'description', 'personality', 'first_mes', 'mesExamples',
+        'creator_notes', 'alternate_greetings',
+        // --- ST 高级预设(Advanced Formatting)核心键名 ---
+        'story_string', 'chat_start', 'example_separator', 'chat_separator',
+        'custom_system_prompt', 'instruction', 'post_history_instructions',
+        'scenario', 'wiFormat', 'depth_prompt'
     ]);
 
     while (stack.length > 0) {
@@ -94,11 +90,9 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    
-                    // 保留你原有的保护自身配置逻辑
                     if (isGlobalSettings && key === extensionName) continue; 
                     
-                    // 【核心拦截】：如果当前键名在白名单里，直接跳过这个字段的清理！
+                    // 遇到白名单内的预设字段，直接跳过，绝对不删！
                     if (protectedKeys.has(key)) continue;
 
                     const val = current[key];
@@ -228,6 +222,13 @@ function initRealtimeInterceptor() {
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+            
+            // 只允许拦截“聊天输入框”和“修改消息框”
+            // 绝对禁止扫描和修改侧边栏的预设面板、正则面板里的输入框
+            if (e.target.id !== 'send_textarea' && !(e.target.classList && e.target.classList.contains('edit_textarea'))) {
+                return; 
+            }
+
             let val = e.target.value || e.target.innerText;
             if (val && val.match(regex)) {
                 const cleaned = val.replace(regex, dynamicReplacer);
@@ -308,15 +309,33 @@ function bindEvents() {
     // 2. 深度数据层清洗（生成完毕后专用）：调用原本的物理删除逻辑
     const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 300); 
     
-    // 【核心改动】：把 MESSAGE_EDITED 绑到了 visualCleanseOnly 上。
+    // 把 MESSAGE_EDITED 绑到了 visualCleanseOnly 上。
     // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
     if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);     
     
-    // 打字结束后 / 切换时：照常执行你的深度清理
+    // 打字结束后 / 切换时：照常执行深度清理
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);     
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);         
+
+    // 3. 底层发包拦截器：发给大模型前，仅清洗 AI 的历史回复
+    if (event_types.CHAT_COMPLETION_PROMPT_READY) {
+        eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, (data) => {
+            const regex = getPurifyRegex();
+            if (!regex || !data || !data.chat) return;
+            
+            data.chat.forEach(msg => {
+                // 只净化 AI 的历史回复 (assistant)，绝对不碰 system (预设) 和 user (用户输入/世界书等)
+                if (msg.role === 'assistant' && msg.content) {
+                    const cleaned = msg.content.replace(regex, dynamicReplacer);
+                    if (msg.content !== cleaned) {
+                        msg.content = cleaned;
+                    }
+                }
+            });
+        });
+    }
 }
 
 function renderTags() {
