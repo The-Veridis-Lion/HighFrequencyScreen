@@ -274,9 +274,24 @@ function bindEvents() {
         if(confirm("将执行全局深度替换，规则列表已锁定保护。是否继续？")) performDeepCleanse();
     });
 
-    eventSource.removeListener(event_types.MESSAGE_EDITED, performGlobalCleanse);
-    eventSource.on(event_types.MESSAGE_EDITED, () => setTimeout(performGlobalCleanse, 100));
-    eventSource.on(event_types.GENERATION_ENDED, performGlobalCleanse);
+    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
+    const visualCleanseOnly = () => {
+        const regex = getPurifyRegex();
+        if (regex) purifyDOM(document.getElementById('chat'), regex);
+    };
+
+    // 2. 深度数据层清洗（生成完毕后专用）：调用原本的物理删除逻辑
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 300); 
+    
+    // 【核心改动】：把 MESSAGE_EDITED 绑到了 visualCleanseOnly 上。
+    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);     
+    
+    // 打字结束后 / 切换时：照常执行你的深度清理
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);     
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);         
 }
 
 function renderTags() {
