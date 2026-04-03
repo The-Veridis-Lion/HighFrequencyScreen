@@ -61,7 +61,7 @@ function dynamicReplacer(match) {
 }
 
 /**
- * 递归洗刷对象 (已加入全量智能键名白名单，完美保护预设)
+ * 递归洗刷对象 (已加入全量智能键名白名单，完美保护所有预设)
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
@@ -69,17 +69,34 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     const stack = [rootObj];
     const seen = new Set(); 
 
-    // 【核心扩充】：囊括了 SillyTavern 所有的设定、卡片、高级格式化预设键名！
+    // 囊括了 SillyTavern 所有的设定、卡片、高级格式化预设键名
     const protectedKeys = new Set([
         extensionName,
-        'prompt_manager', 'regex', 'quick-reply',
-        'system_prompt', 'system_prompt_override', 'authors_note',
-        'prompt', 'description', 'personality', 'first_mes', 'mesExamples',
-        'creator_notes', 'alternate_greetings',
-        // --- ST 高级预设(Advanced Formatting)核心键名 ---
+        
+        // 1. ST 核心插件保护
+        'prompt_manager', 'regex', 'quick-reply', 'macros', 'tokenizers', 
+
+        // 2. 角色与记忆卡片核心字段
+        'description', 'personality', 'first_mes', 'mesExamples',
+        'creator_notes', 'alternate_greetings', 'authors_note', 'prompt',
+
+        // 3. 上下文预设 (Context Templates)
         'story_string', 'chat_start', 'example_separator', 'chat_separator',
-        'custom_system_prompt', 'instruction', 'post_history_instructions',
-        'scenario', 'wiFormat', 'depth_prompt'
+        'scenario', 'scenario_format', 'personality_format', 'wiFormat', 'wi_format',
+        'depth_prompt', 'impersonation_prompt', 'new_chat_prompt', 
+        'new_group_chat_prompt', 'new_example_chat_prompt', 
+        'continue_nudge_prompt', 'group_nudge_prompt',
+
+        // 4. 指令模式预设 (Instruct Mode Templates)
+        'system_prompt', 'system_prompt_override', 'custom_system_prompt',
+        'instruction', 'post_history_instructions', 'main_prompt',
+        'jailbreak_prompt', 'nsfw_prompt', 'input_sequence', 'output_sequence',
+        'first_output_sequence', 'middle_sequence', 'last_output_sequence',
+        'system_sequence_prefix', 'system_sequence_suffix', 'stop_sequence',
+        'wrap', 'activation_regex',
+
+        // 5. 其他安全字段
+        'name', 'state', 'global_note'
     ]);
 
     while (stack.length > 0) {
@@ -92,7 +109,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
                     if (isGlobalSettings && key === extensionName) continue; 
                     
-                    // 遇到白名单内的预设字段，直接跳过，绝对不删！
+                    // 遇到白名单内的预设字段，直接跳过整个分支
                     if (protectedKeys.has(key)) continue;
 
                     const val = current[key];
