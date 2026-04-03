@@ -61,13 +61,30 @@ function dynamicReplacer(match) {
 }
 
 /**
- * 递归洗刷对象
+ * 递归洗刷对象 (已加入智能键名白名单，保护预设)
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
     if (!rootObj || typeof rootObj !== 'object') return changes;
     const stack = [rootObj];
     const seen = new Set(); 
+
+    // ST 核心与各大扩展的“预设/规则”键名白名单
+    const protectedKeys = new Set([
+        'prompt_manager',           // 保护 Prompt Manager 
+        'regex',                    // 保护 Regex (正则扩展)
+        'quick-reply',              // 保护 Quick Reply (快捷回复)
+        'system_prompt',            // 保护全局系统预设
+        'system_prompt_override',   // 保护当前聊天的覆盖预设
+        'authors_note',             // 保护作者备注
+        'prompt',                   // 保护各种插件中通用的 prompt 字段
+        'description',              // 保护角色卡片主设定
+        'personality',              // 保护角色性格
+        'first_mes',                // 保护角色第一条消息
+        'mesExamples',              // 保护对话示例
+        'creator_notes',            // 保护创作者备注
+        'alternate_greetings'       // 保护备用问候语
+    ]);
 
     while (stack.length > 0) {
         const current = stack.pop();
@@ -77,7 +94,13 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    if (isGlobalSettings && key === extensionName) continue; // 保护自身配置
+                    
+                    // 保留你原有的保护自身配置逻辑
+                    if (isGlobalSettings && key === extensionName) continue; 
+                    
+                    // 【核心拦截】：如果当前键名在白名单里，直接跳过这个字段的清理！
+                    if (protectedKeys.has(key)) continue;
+
                     const val = current[key];
                     if (typeof val === 'string') {
                         const cleaned = val.replace(regex, dynamicReplacer);
@@ -157,6 +180,8 @@ async function performDeepCleanse() {
 
     try {
         let scrubbedItems = 0;
+        
+        // 扫描 extension_settings 时会自动跳过白名单里的预设，只清理污染数据。
         if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
         if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
