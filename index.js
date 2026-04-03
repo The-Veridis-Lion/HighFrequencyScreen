@@ -61,43 +61,13 @@ function dynamicReplacer(match) {
 }
 
 /**
- * 递归洗刷对象 (已加入全量智能键名白名单，完美保护所有预设)
+ * 递归洗刷对象
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
     if (!rootObj || typeof rootObj !== 'object') return changes;
     const stack = [rootObj];
     const seen = new Set(); 
-
-    // 囊括了 SillyTavern 所有的设定、卡片、高级格式化预设键名
-    const protectedKeys = new Set([
-        extensionName,
-        
-        // 1. ST 核心插件保护
-        'prompt_manager', 'regex', 'quick-reply', 'macros', 'tokenizers', 
-
-        // 2. 角色与记忆卡片核心字段
-        'description', 'personality', 'first_mes', 'mesExamples',
-        'creator_notes', 'alternate_greetings', 'authors_note', 'prompt',
-
-        // 3. 上下文预设 (Context Templates)
-        'story_string', 'chat_start', 'example_separator', 'chat_separator',
-        'scenario', 'scenario_format', 'personality_format', 'wiFormat', 'wi_format',
-        'depth_prompt', 'impersonation_prompt', 'new_chat_prompt', 
-        'new_group_chat_prompt', 'new_example_chat_prompt', 
-        'continue_nudge_prompt', 'group_nudge_prompt',
-
-        // 4. 指令模式预设 (Instruct Mode Templates)
-        'system_prompt', 'system_prompt_override', 'custom_system_prompt',
-        'instruction', 'post_history_instructions', 'main_prompt',
-        'jailbreak_prompt', 'nsfw_prompt', 'input_sequence', 'output_sequence',
-        'first_output_sequence', 'middle_sequence', 'last_output_sequence',
-        'system_sequence_prefix', 'system_sequence_suffix', 'stop_sequence',
-        'wrap', 'activation_regex',
-
-        // 5. 其他安全字段
-        'name', 'state', 'global_note'
-    ]);
 
     while (stack.length > 0) {
         const current = stack.pop();
@@ -107,11 +77,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    if (isGlobalSettings && key === extensionName) continue; 
-                    
-                    // 遇到白名单内的预设字段，直接跳过整个分支
-                    if (protectedKeys.has(key)) continue;
-
+                    if (isGlobalSettings && key === extensionName) continue; // 保护自身配置
                     const val = current[key];
                     if (typeof val === 'string') {
                         const cleaned = val.replace(regex, dynamicReplacer);
@@ -191,8 +157,6 @@ async function performDeepCleanse() {
 
     try {
         let scrubbedItems = 0;
-        
-        // 扫描 extension_settings 时会自动跳过白名单里的预设，只清理污染数据。
         if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
         if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
@@ -239,13 +203,6 @@ function initRealtimeInterceptor() {
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
-            
-            // 只允许拦截“聊天输入框”和“修改消息框”
-            // 绝对禁止扫描和修改侧边栏的预设面板、正则面板里的输入框
-            if (e.target.id !== 'send_textarea' && !(e.target.classList && e.target.classList.contains('edit_textarea'))) {
-                return; 
-            }
-
             let val = e.target.value || e.target.innerText;
             if (val && val.match(regex)) {
                 const cleaned = val.replace(regex, dynamicReplacer);
@@ -326,33 +283,15 @@ function bindEvents() {
     // 2. 深度数据层清洗（生成完毕后专用）：调用原本的物理删除逻辑
     const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 300); 
     
-    // 把 MESSAGE_EDITED 绑到了 visualCleanseOnly 上。
+    // 【核心改动】：把 MESSAGE_EDITED 绑到了 visualCleanseOnly 上。
     // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
     if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);     
     
-    // 打字结束后 / 切换时：照常执行深度清理
+    // 打字结束后 / 切换时：照常执行你的深度清理
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);     
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);         
-
-    // 3. 底层发包拦截器：发给大模型前，仅清洗 AI 的历史回复
-    if (event_types.CHAT_COMPLETION_PROMPT_READY) {
-        eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, (data) => {
-            const regex = getPurifyRegex();
-            if (!regex || !data || !data.chat) return;
-            
-            data.chat.forEach(msg => {
-                // 只净化 AI 的历史回复 (assistant)，绝对不碰 system (预设) 和 user (用户输入/世界书等)
-                if (msg.role === 'assistant' && msg.content) {
-                    const cleaned = msg.content.replace(regex, dynamicReplacer);
-                    if (msg.content !== cleaned) {
-                        msg.content = cleaned;
-                    }
-                }
-            });
-        });
-    }
 }
 
 function renderTags() {
