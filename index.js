@@ -77,7 +77,8 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    if (isGlobalSettings && key === extensionName) continue; // 保护自身配置
+                    // 【唯一保留的白名单】保护本插件自身的规则配置不被误删
+                    if (isGlobalSettings && key === extensionName) continue; 
                     const val = current[key];
                     if (typeof val === 'string') {
                         const cleaned = val.replace(regex, dynamicReplacer);
@@ -157,6 +158,7 @@ async function performDeepCleanse() {
 
     try {
         let scrubbedItems = 0;
+        // 执行暴力的全局扫描（因为已经人工切走预设，所以不再惧怕误伤）
         if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
         if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
@@ -166,11 +168,11 @@ async function performDeepCleanse() {
             if (saveChatPromise instanceof Promise) await saveChatPromise;
             saveSettingsDebounced(); 
             await new Promise(r => setTimeout(r, 2000)); 
-            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。页面即将刷新。`);
+            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n请切回您原来的预设，页面即将刷新。`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未发现需要替换的数据残留。");
+            alert("未发现需要替换的数据残留。您可以切回预设了。");
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
@@ -205,12 +207,21 @@ function initRealtimeInterceptor() {
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
             let val = e.target.value || e.target.innerText;
             if (val && val.match(regex)) {
-                const cleaned = val.replace(regex, dynamicReplacer);
+                // 【已修复光标位置问题，保证能正常删除】
                 if (e.target.value !== undefined) {
-                    const pos = e.target.selectionStart;
-                    e.target.value = cleaned;
-                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
-                } else { e.target.innerText = cleaned; }
+                    const start = e.target.selectionStart;
+                    const end = e.target.selectionEnd;
+                    const originalLength = val.length;
+                    const cleaned = val.replace(regex, dynamicReplacer);
+                    
+                    if (val !== cleaned) {
+                        e.target.value = cleaned;
+                        const diff = cleaned.length - originalLength;
+                        try { e.target.setSelectionRange(start + diff, end + diff); } catch(err){}
+                    }
+                } else { 
+                    e.target.innerText = val.replace(regex, dynamicReplacer); 
+                }
             }
         }
     }, true);
@@ -242,6 +253,29 @@ function setupUI() {
                 </div>
             </div>`);
     }
+
+    // --- 新增：强制阅读 3 秒的高危警告弹窗 ---
+    if (!$('#bl-warning-overlay').length) {
+        $('body').append(`
+            <div id="bl-warning-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:9999998; backdrop-filter:blur(2px);"></div>
+            <div id="bl-warning-popup" style="display:none; position:fixed; top:25vh; left:50%; transform:translateX(-50%); width:90%; max-width:420px; background:var(--bl-background-popup, #fff); border:2px solid var(--bl-danger-color, #ff4757); border-radius:12px; z-index:9999999; padding:25px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+                <h3 style="color:var(--bl-danger-color, #ff4757); margin:0 0 15px 0; font-size:20px; display:flex; align-items:center; gap:8px;">
+                    ⚠️ 深度清理高危警告！
+                </h3>
+                <p style="font-size:15px; color:var(--bl-text-primary, #333); line-height:1.6; margin:0 0 20px 0;">
+                    为了绝对防止误删您的专属【系统预设(Preset)】，请在此刻：
+                    <br><br>
+                    👉 <strong style="color:var(--bl-danger-color, #ff4757); background:rgba(255,71,87,0.1); padding:2px 4px; border-radius:4px;">将 ST 当前的系统预设切换至「Default」或任意废弃预设！</strong>
+                    <br><br>
+                    <span style="font-size:13px; color:var(--bl-text-secondary, #666);">清理完成后页面会刷新，届时您再切回原预设即可保证 100% 安全。</span>
+                </p>
+                <div style="display:flex; justify-content:flex-end; gap:12px;">
+                    <button id="bl-warning-cancel" style="padding:10px 18px; border-radius:8px; border:1px solid var(--bl-border-color, #ccc); background:transparent; color:var(--bl-text-primary, #333); cursor:pointer; font-weight:bold;">取消清理</button>
+                    <button id="bl-warning-confirm" disabled style="padding:10px 18px; border-radius:8px; border:none; background:var(--bl-danger-color, #ff4757); color:white; cursor:not-allowed; opacity:0.5; font-weight:bold; transition:all 0.2s;">我已切走预设 (3s)</button>
+                </div>
+            </div>
+        `);
+    }
 }
 
 function bindEvents() {
@@ -270,8 +304,42 @@ function bindEvents() {
         renderTags();
     });
 
+    // --- 替换原本的 confirm，改为触发 3 秒倒计时弹窗 ---
+    let timerInterval = null;
     $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
-        if(confirm("将执行全局深度替换，规则列表已锁定保护。是否继续？")) performDeepCleanse();
+        $('#bl-purifier-popup').fadeOut(100);
+        $('#bl-warning-overlay, #bl-warning-popup').fadeIn(200);
+
+        let timeLeft = 3;
+        const $btn = $('#bl-warning-confirm');
+        $btn.prop('disabled', true).css({cursor: 'not-allowed', opacity: 0.5}).text(`我已切走预设 (${timeLeft}s)`);
+
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                $btn.text(`我已切走预设 (${timeLeft}s)`);
+            } else {
+                clearInterval(timerInterval);
+                $btn.prop('disabled', false).css({cursor: 'pointer', opacity: 1}).text('我已安全切换，立即清理');
+            }
+        }, 1000);
+    });
+
+    // 弹窗：取消按钮
+    $(document).off('click', '#bl-warning-cancel, #bl-warning-overlay').on('click', '#bl-warning-cancel, #bl-warning-overlay', (e) => {
+        if(e.target.id === 'bl-warning-overlay' || e.target.id === 'bl-warning-cancel') {
+            clearInterval(timerInterval);
+            $('#bl-warning-overlay, #bl-warning-popup').fadeOut(200);
+        }
+    });
+
+    // 弹窗：确认按钮
+    $(document).off('click', '#bl-warning-confirm').on('click', '#bl-warning-confirm', function() {
+        if (!$(this).prop('disabled')) {
+            $('#bl-warning-overlay, #bl-warning-popup').fadeOut(200);
+            performDeepCleanse();
+        }
     });
 
     // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
