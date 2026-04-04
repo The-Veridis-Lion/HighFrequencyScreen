@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, chat, updateMessageBlock } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, chat } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [] };
@@ -32,7 +32,7 @@ function getPurifyRegex() {
         rule.targets.forEach(t => {
             if (t) {
                 allTargets.push(t);
-                wordToRuleMap[t] = rule.replacements; 
+                wordToRuleMap[t] = rule.replacements; // 将目标词映射到它的替换词数组
             }
         });
     });
@@ -40,6 +40,7 @@ function getPurifyRegex() {
     if (!allTargets.length) {
         cachedRegex = null;
     } else {
+        // 按长度倒序排列，防止短词截断长词（如优先匹配“极其”，后匹配“极”）
         const sorted = [...allTargets].sort((a, b) => b.length - a.length);
         const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         cachedRegex = new RegExp(`(${escaped.join('|')})`, 'gmu');
@@ -54,8 +55,8 @@ function getPurifyRegex() {
  */
 function dynamicReplacer(match) {
     const reps = wordToRuleMap[match];
-    if (!reps || reps.length === 0) return ''; 
-    const randIndex = Math.floor(Math.random() * reps.length); 
+    if (!reps || reps.length === 0) return ''; // 没有替换词，直接删除
+    const randIndex = Math.floor(Math.random() * reps.length); // 随机抽取
     return reps[randIndex];
 }
 
@@ -71,7 +72,7 @@ function isProtectedNode(node) {
     // 2. 保护本插件自身的设置界面
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal')) return true;
     
-    // 3. ★ 核心：保护所有酒馆的 UI 界面
+    // 3. ★ 核心：保护所有酒馆的 UI 界面（右侧预设菜单、所有弹窗、顶部状态栏、左侧抽屉等）
     if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
         return true;
     }
@@ -96,6 +97,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
+                    // 【唯一保留的白名单】保护本插件自身的规则配置不被误删
                     if (isGlobalSettings && key === extensionName) continue; 
                     const val = current[key];
                     if (typeof val === 'string') {
@@ -124,6 +126,7 @@ function purifyDOM(rootNode, regex) {
     let node;
     while (node = walker.nextNode()) {
         const parent = node.parentNode;
+        // 如果文本节点所在的父级属于受保护区域，或者用户正在聚焦编辑，则跳过
         if (parent && (isProtectedNode(parent) || (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))))) {
             continue;
         }
@@ -139,6 +142,7 @@ function purifyDOM(rootNode, regex) {
         if (rootNode.querySelectorAll) inputs.push(...Array.from(rootNode.querySelectorAll('input, textarea')));
 
         inputs.forEach(input => {
+            // 过滤受保护的输入框和当前正在打字的输入框
             if (isProtectedNode(input) || document.activeElement === input) return;
             const originalVal = input.value || '';
             const cleanedVal = originalVal.replace(regex, dynamicReplacer);
@@ -147,62 +151,6 @@ function purifyDOM(rootNode, regex) {
     }
 }
 
-/**
- * 【日常高频】：仅精准清洗最后一条聊天记录 (彻底释放 CPU)
- */
-async function cleanseLatestMessage() {
-    const regex = getPurifyRegex();
-    if (!regex || !chat || chat.length === 0) return;
-    
-    const index = chat.length - 1;
-    const msg = chat[index];
-    let msgChanged = false; 
-
-    // 1. 精准清洗当前主消息
-    if (typeof msg.mes === 'string') {
-        const cleaned = msg.mes.replace(regex, dynamicReplacer);
-        if (msg.mes !== cleaned) { 
-            msg.mes = cleaned; 
-            msgChanged = true; 
-        }
-    }
-    
-    // 2. 精准清洗这条消息的滑动分支
-    if (msg.swipes && Array.isArray(msg.swipes)) {
-        for (let i = 0; i < msg.swipes.length; i++) {
-            if (typeof msg.swipes[i] === 'string') {
-                const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
-                if (msg.swipes[i] !== cleanedSwipe) {
-                    msg.swipes[i] = cleanedSwipe;
-                    msgChanged = true;
-                }
-            } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
-                const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
-                if (msg.swipes[i].mes !== cleanedSwipe) {
-                    msg.swipes[i].mes = cleanedSwipe;
-                    msgChanged = true;
-                }
-            }
-        }
-    }
-
-    // 3. 只有发生修改时，才刷新 UI 和存盘
-    if (msgChanged) {
-        try {
-            if (typeof updateMessageBlock === 'function') {
-                setTimeout(() => updateMessageBlock(index, chat[index]), 50);
-            }
-        } catch(e) {}
-        
-        try {
-            if (typeof saveChat === 'function') saveChat();
-        } catch(e) {}
-    }
-}
-
-/**
- * 【全局扫描】：遍历整个聊天数组，用于载入新聊天或滑动旧消息时
- */
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -212,6 +160,7 @@ function performGlobalCleanse() {
         chat.forEach((msg, index) => {
             let msgChanged = false; 
             
+            // 1. 清理当前显示的主消息 (msg.mes)
             if (typeof msg.mes === 'string') {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
@@ -220,6 +169,7 @@ function performGlobalCleanse() {
                 }
             }
             
+            // 2. 清理所有滑动分支 (Swipes)，同时兼容新老版本酒馆的数据结构
             if (msg.swipes && Array.isArray(msg.swipes)) {
                 for (let i = 0; i < msg.swipes.length; i++) {
                     if (typeof msg.swipes[i] === 'string') {
@@ -238,6 +188,7 @@ function performGlobalCleanse() {
                 }
             }
 
+            // 3. 如果修改了底层，立刻命令酒馆官方渲染器刷新气泡！
             if (msgChanged) {
                 chatChanged = true;
                 try {
@@ -249,15 +200,19 @@ function performGlobalCleanse() {
         });
     }
     
+    // 4. 将洗刷干净的数据真正写入 .jsonl 文档
     if (chatChanged) {
-        try { if (typeof saveChat === 'function') saveChat(); } catch(e) {}
+        try {
+            if (typeof saveChat === 'function') saveChat();
+        } catch(e) {
+            console.error("[Ultimate Purifier] 存盘失败", e);
+        }
     }
+    
+    // 5. 兜底屏幕视觉清理
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-/**
- * 【危险功能】：洗刷所有深层设置和元数据
- */
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) { alert("请先添加屏蔽规则。"); return; }
@@ -283,6 +238,7 @@ async function performDeepCleanse() {
             await new Promise(r => setTimeout(r, 2000)); 
             $('#bl-loading-overlay').remove();
             
+            // ================= 新增成功后的切回预设提醒 =================
             alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回常用预设】以恢复工作状态！`);
             location.reload(); 
         } else {
@@ -302,6 +258,7 @@ function initRealtimeInterceptor() {
         mutations.forEach(m => {
             m.addedNodes.forEach(node => {
                 if (node.nodeType === 3 || node.nodeType === 8) { 
+                    // 额外防线：检查文本节点的父级
                     if (node.parentNode && isProtectedNode(node.parentNode)) return;
                     const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
                     if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
@@ -317,11 +274,14 @@ function initRealtimeInterceptor() {
         });
     });
     
+    // 只监听实际的聊天气泡区域
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
+    // 全局打字监听器
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
+        // ★ 在这里拦截：如果打字的目标输入框属于保护区（预设面板等），直接 return 放行，不执行过滤
         if (isProtectedNode(e.target)) return;
         
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
@@ -365,6 +325,7 @@ function setupUI() {
             </div>`);
     }
 
+    // ================= 深度清理二次确认弹窗 =================
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
             <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
@@ -387,10 +348,13 @@ function setupUI() {
             </div>
         `);
         
+        // 使用透明度变化代替写死颜色，更自然地适配所有主题
         $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
     }
 }
-
+/**
+ * 触发带倒计时的确认弹窗
+ */
 function showConfirmModal() {
     const $modal = $('#bl-confirm-modal');
     const $confirmBtn = $('#bl-modal-confirm');
@@ -459,36 +423,26 @@ function bindEvents() {
         showConfirmModal();
     });
 
-    // ================= 极速节流流式净化 =================
-    let streamThrottle = false;
-    const visualCleanseLatestOnly = () => {
-        if (streamThrottle) return;
-        streamThrottle = true;
-        setTimeout(() => { streamThrottle = false; }, 150); // 强制限制：每秒最多扫描6次，解决手机端发热
-
+    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
+    const visualCleanseOnly = () => {
         const regex = getPurifyRegex();
-        if (!regex) return;
-        
-        // 极速定位：打字时绝对不去管整个网页，只盯着当前正在生成的最后一个气泡
-        const lastMesEl = document.querySelector('.mes:last-child');
-        if (lastMesEl) purifyDOM(lastMesEl, regex);
+        if (regex) purifyDOM(document.getElementById('chat'), regex);
     };
 
-    // ================= 分流策略 =================
+    // 2. 深度数据层清洗（延迟 1000ms 确保酒馆写入完成）
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
     
-    // 1. 流式生成时：触发加了节流阀、且只扫描最后一个元素的轻量视觉保护
-    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseLatestOnly);     
+    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
     
-    // 2. 生成结束时：仅修改最后一条数据的狙击函数 (延迟一下确保酒馆写入完成)
-    const delayedLightCleanse = () => setTimeout(cleanseLatestMessage, 1000); 
-    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedLightCleanse); 
-    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedLightCleanse); 
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedLightCleanse); 
+    // 打字彻底结束后（或被手动停止时）：执行底层物理删除 + 存入文档 + 刷新小铅笔
+    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
     
-    // 3. 发生全局变化时（切聊天/滑动历史消息）：调用全局遍历函数
-    const delayedGlobalCleanse = () => setTimeout(performGlobalCleanse, 1000);
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedGlobalCleanse);      
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedGlobalCleanse);          
+    // 其他常规操作时清理
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
 }
 
 function renderTags() {
@@ -539,6 +493,7 @@ jQuery(() => {
     if (isBooted) return;
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
     
+    // 执行数据迁移
     migrateOldData();
     if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
 
