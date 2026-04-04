@@ -96,11 +96,25 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     return changes;
 }
 
+let dataCleanseTimer = null;
+
 /**
- * 扫描并清理指定 DOM
+ * 设定定时器延迟执行底层数据清理
+ */
+function scheduleDataCleanse() {
+    if (dataCleanseTimer) clearTimeout(dataCleanseTimer);
+    dataCleanseTimer = setTimeout(() => {
+        performGlobalCleanse();
+    }, 1000);
+}
+
+/**
+ * 遍历并修改DOM节点文本
+ * 返回布尔值指示是否发生修改
  */
 function purifyDOM(rootNode, regex) {
-    if (!rootNode) return;
+    if (!rootNode) return false;
+    let changed = false;
     const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, null, false);
     
     let node;
@@ -112,7 +126,10 @@ function purifyDOM(rootNode, regex) {
         }
         const original = node.nodeValue || '';
         const cleaned = original.replace(regex, dynamicReplacer);
-        if (original !== cleaned) node.nodeValue = cleaned;
+        if (original !== cleaned) { 
+            node.nodeValue = cleaned;
+            changed = true;
+        }
     }
 
     if (rootNode.nodeType === 1) {
@@ -124,11 +141,18 @@ function purifyDOM(rootNode, regex) {
             if (input.id === 'send_textarea' || input.classList.contains('edit_textarea') || document.activeElement === input) return;
             const originalVal = input.value || '';
             const cleanedVal = originalVal.replace(regex, dynamicReplacer);
-            if (originalVal !== cleanedVal) input.value = cleanedVal;
+            if (originalVal !== cleanedVal) {
+                input.value = cleanedVal;
+                changed = true;
+            }
         });
     }
+    return changed;
 }
 
+/**
+ * 检查并清理全局聊天数据记录
+ */
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
@@ -138,7 +162,7 @@ function performGlobalCleanse() {
         window.chat.forEach((msg, index) => {
             let msgChanged = false; 
             
-            // 1. 清理当前显示的主消息 (msg.mes)
+            // 替换msg.mes属性
             if (typeof msg.mes === 'string') {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
@@ -147,7 +171,7 @@ function performGlobalCleanse() {
                 }
             }
             
-            // 2. 清理所有滑动分支 (Swipes)，同时兼容新老版本酒馆的数据结构
+            // 遍历msg.swipes并替换匹配项
             if (msg.swipes && Array.isArray(msg.swipes)) {
                 for (let i = 0; i < msg.swipes.length; i++) {
                     if (typeof msg.swipes[i] === 'string') {
@@ -166,31 +190,31 @@ function performGlobalCleanse() {
                 }
             }
 
-            // 3. 如果修改了底层，立刻命令酒馆官方渲染器刷新气泡！
+            // 调用系统函数更新UI区块
             if (msgChanged) {
                 chatChanged = true;
                 try {
                     if (typeof updateMessageBlock === 'function') {
-                        setTimeout(() => updateMessageBlock(index, window.chat[index]), 50);
+                        updateMessageBlock(index, window.chat[index]);
                     }
                 } catch(e) {}
             }
         });
     }
     
-    // 4. 将洗刷干净的数据真正写入 .jsonl 文档
+    // 调用系统函数保存数据
     if (chatChanged) {
         try {
             if (typeof saveChat === 'function') saveChat();
-        } catch(e) {
-            console.error("[Ultimate Purifier] 存盘失败", e);
-        }
+        } catch(e) {}
     }
     
-    // 5. 兜底屏幕视觉清理
     purifyDOM(document.getElementById('chat'), regex);
 }
 
+/**
+ * 遍历全量对象执行清理及强制页面刷新
+ */
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) { alert("请先添加屏蔽规则。"); return; }
@@ -216,7 +240,6 @@ async function performDeepCleanse() {
             await new Promise(r => setTimeout(r, 2000)); 
             $('#bl-loading-overlay').remove();
             
-            // ================= 新增成功后的切回预设提醒 =================
             alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
             location.reload(); 
         } else {
@@ -225,32 +248,52 @@ async function performDeepCleanse() {
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
-        alert("清理失败，请查看控制台。");
     }
 }
 
+/**
+ * 监听DOM变化并执行文本替换
+ */
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
         if (!regex) return;
+        
+        let domChanged = false;
+
         mutations.forEach(m => {
             m.addedNodes.forEach(node => {
                 if (node.nodeType === 3 || node.nodeType === 8) { 
                     const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
-                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
+                    if (node.nodeValue !== cleaned) {
+                        node.nodeValue = cleaned;
+                        domChanged = true;
+                    }
                 } else if (node.nodeType === 1) { 
-                    purifyDOM(node, regex);
+                    if (purifyDOM(node, regex)) {
+                        domChanged = true;
+                    }
                 }
             });
             if (m.type === 'characterData') {
                 const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
-                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
+                if (m.target.nodeValue !== cleaned) {
+                    m.target.nodeValue = cleaned;
+                    domChanged = true;
+                }
             }
         });
+
+        // 若DOM发生修改，重置底层数据清理定时器
+        if (domChanged) {
+            scheduleDataCleanse();
+        }
     });
+
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
+    // 监听输入框事件
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
@@ -267,6 +310,9 @@ function initRealtimeInterceptor() {
     }, true);
 }
 
+/**
+ * 构造DOM结构追加至页面
+ */
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
@@ -294,23 +340,20 @@ function setupUI() {
             </div>`);
     }
 
-    // ================= 新增：深度清理二次确认弹窗 (带3秒倒计时) =================
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
             <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; backdrop-filter:blur(3px);">
                 <div style="background:#222; padding:30px; border-radius:10px; max-width:450px; text-align:center; box-shadow: 0 4px 20px rgba(0,0,0,0.8); border: 1px solid #555;">
                     <h3 style="color:#ff4d4d; margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
-                    
                     <p style="font-size:15px; color:#ddd; line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                        为了绝对防止深度清理修改您的常用系统预设(Preset)，请在此刻：
+                        为了防止深度清理修改系统预设(Preset)，请执行以下操作：
                         <br><br>
-                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将SillyTavern当前的系统预设切换至「Default」或任意废弃预设！</strong>
+                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将当前的系统预设切换至「Default」或废弃预设</strong>
                         <br>
-                        <span style="font-size:13px; color:#aaa;">清理完成后页面会刷新，届时您再切回原预设即可保证您的安全。</span>
+                        <span style="font-size:13px; color:#aaa;">清理完成后页面将刷新，重置回原预设即可。</span>
                     </p>
-
                     <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; font-weight:bold; transition: 0.2s;">取消返回</button>
+                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; font-weight:bold; transition: 0.2s;">取消</button>
                         <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:6px; background:#660000; color:#aaa; cursor:not-allowed; font-weight:bold; transition: 0.2s;">确认清理 (3s)</button>
                     </div>
                 </div>
@@ -322,7 +365,7 @@ function setupUI() {
 }
 
 /**
- * 触发带倒计时的确认弹窗
+ * 修改样式展示确认模态框并执行倒计时
  */
 function showConfirmModal() {
     const $modal = $('#bl-confirm-modal');
@@ -343,7 +386,7 @@ function showConfirmModal() {
             clearInterval(timer);
             $confirmBtn.prop('disabled', false)
                        .css({ background: '#d32f2f', color: 'white', cursor: 'pointer' })
-                       .text('我已切换，确认清理！');
+                       .text('我已切换，确认清理');
             $confirmBtn.hover(function(){ $(this).css('background', '#f44336') }, function(){ $(this).css('background', '#d32f2f') });
         }
     }, 1000);
@@ -362,6 +405,9 @@ function showConfirmModal() {
     });
 }
 
+/**
+ * 绑定UI事件与系统数据事件
+ */
 function bindEvents() {
     $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
@@ -392,28 +438,17 @@ function bindEvents() {
         showConfirmModal();
     });
 
-    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
-    const visualCleanseOnly = () => {
-        const regex = getPurifyRegex();
-        if (regex) purifyDOM(document.getElementById('chat'), regex);
-    };
-
-    // 2. 深度数据层清洗（延迟 1000ms 确保酒馆写入完成）
-    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
-    
-    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
-    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
-    
-    // 打字彻底结束后（或被手动停止时）：执行底层物理删除 + 存入文档 + 刷新小铅笔
-    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
-    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
-    
-    // 其他常规操作时清理
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
+    // 绑定系统事件至数据清理防抖函数
+    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, scheduleDataCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, scheduleDataCleanse); 
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, scheduleDataCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, scheduleDataCleanse);      
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, scheduleDataCleanse);          
 }
 
+/**
+ * 读取设置并输出HTML结构至界面
+ */
 function renderTags() {
     const rules = extension_settings[extensionName].rules || [];
     const html = rules.map((r, i) => {
@@ -438,7 +473,7 @@ function renderTags() {
 }
 
 /**
- * 自动数据迁移：将旧版的 bannedWords 无损升级为 3.0 的 rules 架构
+ * 检查旧版配置并写入新版数据结构
  */
 function migrateOldData() {
     const settings = extension_settings[extensionName];
@@ -453,7 +488,6 @@ function migrateOldData() {
         delete settings.bannedWords;
         isRegexDirty = true;
         saveSettingsDebounced();
-        console.log("[Ultimate Purifier] 已成功将旧版数据迁移至 v3.0");
     }
 }
 
@@ -462,7 +496,6 @@ jQuery(() => {
     if (isBooted) return;
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
     
-    // 执行数据迁移
     migrateOldData();
     if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
 
@@ -474,6 +507,7 @@ jQuery(() => {
         initRealtimeInterceptor(); 
         performGlobalCleanse(); 
     };
+    
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
         if (document.getElementById('send_textarea')) boot();
