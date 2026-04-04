@@ -145,23 +145,16 @@ function performGlobalCleanse() {
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-/**
- * 深度清理函数：遍历所有数据库、元数据及扩展缓存，完成后刷新页面
- */
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
-    if (!regex) {
-        alert("请先添加屏蔽词。");
-        return;
-    }
+    if (!regex) { alert("请先添加屏蔽规则。"); return; }
 
     $('body').append(`
-        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;font-family:sans-serif;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;">正在执行深度扫描与清理...</h2>
+        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
+            <h2 style="margin-bottom:20px;font-size:20px;">正在执行深度扫描与映射替换...</h2>
             <p>正在同步数据到磁盘，请稍候。</p>
         </div>
     `);
-
     await new Promise(r => setTimeout(r, 100));
 
     try {
@@ -178,49 +171,84 @@ async function performDeepCleanse() {
             $('#bl-loading-overlay').remove();
             
             // ================= 新增成功后的切回预设提醒 =================
-            alert(`清理完成，共移除 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
+            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未发现匹配残留。\n\n您可以安全地将系统预设切换回您的常用预设了。");
+            alert("未发现需要替换的数据残留。\n\n您可以安全地将系统预设切换回您的常用预设了。");
         }
     } catch (e) {
-        console.error("Deep cleanse failed:", e);
         $('#bl-loading-overlay').remove();
-        alert("清理过程中发生错误，请查看控制台。");
+        alert("清理失败，请查看控制台。");
     }
 }
 
-/**
- * UI 设置：追加控制面板及 3秒倒计时安全弹窗
- */
+function initRealtimeInterceptor() {
+    const chatObserver = new MutationObserver((mutations) => {
+        const regex = getPurifyRegex();
+        if (!regex) return;
+        mutations.forEach(m => {
+            m.addedNodes.forEach(node => {
+                if (node.nodeType === 3 || node.nodeType === 8) { 
+                    const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
+                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
+                } else if (node.nodeType === 1) { 
+                    purifyDOM(node, regex);
+                }
+            });
+            if (m.type === 'characterData') {
+                const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
+                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
+            }
+        });
+    });
+    const chatEl = document.getElementById('chat');
+    if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
+
+    document.addEventListener('input', (e) => {
+        const regex = getPurifyRegex();
+        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+            let val = e.target.value || e.target.innerText;
+            if (val && val.match(regex)) {
+                const cleaned = val.replace(regex, dynamicReplacer);
+                if (e.target.value !== undefined) {
+                    const pos = e.target.selectionStart;
+                    e.target.value = cleaned;
+                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
+                } else { e.target.innerText = cleaned; }
+            }
+        }
+    }, true);
+}
+
 function setupUI() {
-    // 侧边栏按钮
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="屏蔽词管理">
-                <i class="fa-solid fa-eraser fa-fw"></i><span>屏蔽词管理</span>
+            <div id="bl-wand-btn" title="词汇映射管理">
+                <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
             </div>`);
     }
-    // 屏蔽词管理主面板
     if (!$('#bl-purifier-popup').length) {
         $('body').append(`
             <div id="bl-purifier-popup">
                 <div class="bl-header">
-                    <h3 class="bl-title">屏蔽词设置</h3>
+                    <h3 class="bl-title">全局屏蔽与映射规则</h3>
                     <button id="bl-close-btn" class="bl-close">&times;</button>
                 </div>
-                <div class="bl-input-group">
-                    <input type="text" id="bl-input-field" class="bl-input" placeholder="输入屏蔽词...">
-                    <button id="bl-add-btn" class="bl-add-btn">添加</button>
+                <div class="bl-rule-builder">
+                    <textarea id="bl-target-input" class="bl-textarea" placeholder="输入目标词 (必填，支持批量，逗号/空格分隔)" rows="2"></textarea>
+                    <div class="bl-rule-arrow">⬇️ 随机替换为 ⬇️</div>
+                    <textarea id="bl-rep-input" class="bl-textarea" placeholder="输入替换词 (可选，支持批量)。不填则直接删除目标词" rows="2"></textarea>
+                    <button id="bl-add-rule-btn" class="bl-add-rule-btn">添加规则组</button>
                 </div>
-                <div id="bl-tags-container"></div>
+                <div id="bl-tags-container" style="margin-top:15px;"></div>
                 <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽</button>
+                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
                 </div>
             </div>`);
     }
-    // 深度清理二次确认弹窗 (带3秒倒计时与你的专属提示)
+
+    // ================= 新增：深度清理二次确认弹窗 (带3秒倒计时) =================
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
             <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; backdrop-filter:blur(3px);">
@@ -243,7 +271,6 @@ function setupUI() {
             </div>
         `);
         
-        // 鼠标悬停效果
         $('#bl-modal-cancel').hover(function(){ $(this).css('background', '#777') }, function(){ $(this).css('background', '#555') });
     }
 }
@@ -256,21 +283,18 @@ function showConfirmModal() {
     const $confirmBtn = $('#bl-modal-confirm');
     const $cancelBtn = $('#bl-modal-cancel');
     
-    // 显示弹窗并初始化按钮状态
     $modal.css('display', 'flex');
     $confirmBtn.prop('disabled', true).css({ background: '#660000', color: '#aaa', cursor: 'not-allowed' });
     
     let timeLeft = 3;
     $confirmBtn.text(`确认清理 (${timeLeft}s)`);
     
-    // 3秒倒计时
     const timer = setInterval(() => {
         timeLeft--;
         if (timeLeft > 0) {
             $confirmBtn.text(`确认清理 (${timeLeft}s)`);
         } else {
             clearInterval(timer);
-            // 倒计时结束，激活按钮
             $confirmBtn.prop('disabled', false)
                        .css({ background: '#d32f2f', color: 'white', cursor: 'pointer' })
                        .text('我已切换，确认清理！');
@@ -278,13 +302,11 @@ function showConfirmModal() {
         }
     }, 1000);
 
-    // 取消按钮逻辑
     $cancelBtn.off('click').on('click', () => {
         clearInterval(timer);
         $modal.hide();
     });
 
-    // 确认按钮逻辑
     $confirmBtn.off('click').on('click', () => {
         if (!timeLeft) {
             clearInterval(timer);
@@ -294,115 +316,114 @@ function showConfirmModal() {
     });
 }
 
-/**
- * 步骤一：表面隐藏（纯视觉屏蔽，流式输出时调用）
- */
-function initRealtimeInterceptor() {
-    const chatObserver = new MutationObserver((mutations) => {
-        const regex = getPurifyRegex();
-        if (!regex) return;
-        mutations.forEach(m => {
-            m.addedNodes.forEach(node => {
-                if (node.nodeType === 3 || node.nodeType === 8) { 
-                    const cleaned = node.nodeValue.replace(regex, '');
-                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
-                } else if (node.nodeType === 1) { 
-                    purifyDOM(node, regex);
-                }
-            });
-            if (m.type === 'characterData') {
-                const cleaned = m.target.nodeValue.replace(regex, '');
-                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
-            }
-        });
-    });
-    
-    const chatEl = document.getElementById('chat');
-    if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true });
-
-    document.addEventListener('input', (e) => {
-        const regex = getPurifyRegex();
-        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
-            let val = e.target.value || e.target.innerText;
-            if (val && val.match(regex)) {
-                const cleaned = val.replace(regex, '');
-                if (e.target.value !== undefined) {
-                    const pos = e.target.selectionStart;
-                    e.target.value = cleaned;
-                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
-                } else { e.target.innerText = cleaned; }
-            }
-        }
-    }, true);
-}
-
-/**
- * 步骤二：事件绑定与彻底底层删除
- */
 function bindEvents() {
     $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
-    $(document).off('click', '#bl-add-btn').on('click', '#bl-add-btn', () => {
-        const val = $('#bl-input-field').val().trim();
-        if (val && !extension_settings[extensionName].bannedWords.includes(val)) {
-            extension_settings[extensionName].bannedWords.push(val);
-            $('#bl-input-field').val('');
+    
+    $(document).off('click', '#bl-add-rule-btn').on('click', '#bl-add-rule-btn', () => {
+        const targets = parseInputToWords($('#bl-target-input').val());
+        const replacements = parseInputToWords($('#bl-rep-input').val());
+
+        if (targets.length > 0) {
+            extension_settings[extensionName].rules.push({ targets, replacements });
+            $('#bl-target-input').val('');
+            $('#bl-rep-input').val('');
+            isRegexDirty = true; 
             saveSettingsDebounced();
             renderTags();
             performGlobalCleanse(); 
         }
     });
-    $(document).off('click', '.bl-tag span').on('click', '.bl-tag span', function() {
-        extension_settings[extensionName].bannedWords.splice($(this).data('index'), 1);
+
+    $(document).off('click', '.bl-tag-del').on('click', '.bl-tag-del', function() {
+        extension_settings[extensionName].rules.splice($(this).data('index'), 1);
+        isRegexDirty = true;
         saveSettingsDebounced();
         renderTags();
     });
-    
-    // 绑定新的安全弹窗
+
+    // ================= 修改：调用安全弹窗 =================
     $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
         showConfirmModal();
     });
 
-    // === 核心清洗逻辑（延迟500ms确保酒馆写入完成） ===
-    eventSource.removeListener(event_types.GENERATION_ENDED, performGlobalCleanse);
-    eventSource.on(event_types.GENERATION_ENDED, () => setTimeout(performGlobalCleanse, 500));
+    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
+    const visualCleanseOnly = () => {
+        const regex = getPurifyRegex();
+        if (regex) purifyDOM(document.getElementById('chat'), regex);
+    };
+
+    // 2. 深度数据层清洗（生成完毕后专用）：调用原本的物理删除逻辑
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 300); 
     
-    if (eventSource.listeners && typeof eventSource.listeners === 'function' && eventSource.listeners(event_types.MESSAGE_RECEIVED)) {
-        eventSource.removeListener(event_types.MESSAGE_RECEIVED, performGlobalCleanse);
-        eventSource.on(event_types.MESSAGE_RECEIVED, () => setTimeout(performGlobalCleanse, 500));
-    } else {
-        try {
-            eventSource.removeListener(event_types.MESSAGE_RECEIVED, performGlobalCleanse);
-            eventSource.on(event_types.MESSAGE_RECEIVED, () => setTimeout(performGlobalCleanse, 500));
-        } catch(e) {}
-    }
+    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
     
-    eventSource.removeListener(event_types.MESSAGE_EDITED, performGlobalCleanse);
-    eventSource.on(event_types.MESSAGE_EDITED, () => setTimeout(performGlobalCleanse, 500));
+    // 打字结束后 / 切换时：照常执行深度清理
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
 }
 
 function renderTags() {
-    const words = extension_settings[extensionName].bannedWords || [];
-    $('#bl-tags-container').html(words.map((w, i) => `<div class="bl-tag">${w}<span data-index="${i}">&times;</span></div>`).join('') || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px;">无数据</div>');
+    const rules = extension_settings[extensionName].rules || [];
+    const html = rules.map((r, i) => {
+        const fullTargets = r.targets.join(', ');
+        const fullReps = r.replacements.length > 0 ? r.replacements.join(', ') : '无 (直接删除)';
+        
+        return `<div class="bl-tag" title="目标:\n${fullTargets}\n\n替换为:\n${fullReps}">
+            <div class="bl-tag-layout">
+                <div class="bl-tag-scroll-box bl-tag-left">
+                    <b style="color:var(--bl-danger-color)">${fullTargets}</b>
+                </div>
+                <div class="bl-tag-arrow">➔</div>
+                <div class="bl-tag-scroll-box bl-tag-right">
+                    <b style="color:var(--bl-accent-color)">${fullReps}</b>
+                </div>
+            </div>
+            <div class="bl-tag-del" data-index="${i}" title="删除规则">&times;</div>
+        </div>`;
+    }).join('');
+    
+    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; padding: 10px 0;">当前无规则</div>');
 }
 
 /**
- * 步骤三：初始化
+ * 自动数据迁移：将旧版的 bannedWords 无损升级为 3.0 的 rules 架构
  */
+function migrateOldData() {
+    const settings = extension_settings[extensionName];
+    if (settings && settings.bannedWords) {
+        if (settings.bannedWords.length > 0) {
+            settings.rules = settings.rules || [];
+            settings.rules.push({
+                targets: [...settings.bannedWords],
+                replacements: []
+            });
+        }
+        delete settings.bannedWords;
+        isRegexDirty = true;
+        saveSettingsDebounced();
+        console.log("[Ultimate Purifier] 已成功将旧版数据迁移至 v3.0");
+    }
+}
+
 let isBooted = false;
 jQuery(() => {
     if (isBooted) return;
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
+    
+    // 执行数据迁移
+    migrateOldData();
+    if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
+
     const boot = () => {
         if (isBooted) return;
         isBooted = true;
         setupUI();
         bindEvents();
-        
-        // 开启实时表面隐藏（不碰数据库）
         initRealtimeInterceptor(); 
-
-        // 初次加载时执行一次全局清洗
         performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
