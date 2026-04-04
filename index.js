@@ -130,35 +130,39 @@ function purifyDOM(rootNode, regex) {
 }
 
 /**
- *物理模拟点击小铅笔、触发输入事件并保存
+ * 物理模拟点击小铅笔、触发输入事件并保存
  */
 async function simulatePencilEdit(messageIndex, newText) {
-    const $mes = $(.mes[mesid="${messageIndex}"]);
+    // 【修复点】添加了反引号，确保选择器字符串合法
+    const $mes = $(`.mes[mesid="${messageIndex}"]`);
     if (!$mes.length) return;
 
     // 1. 找到并点击编辑按钮 (小铅笔)
     const $editBtn = $mes.find('.mes_edit');
     if (!$editBtn.length) return;
-    $editBtn.click(); // 触发 ST 打开编辑框
+    $editBtn.click(); 
 
-    // 2. 给 UI 50毫秒的时间渲染输入框
-    await new Promise(r => setTimeout(r, 50));
+    // 2. 等待编辑框弹出
+    await new Promise(r => setTimeout(r, 100));
 
-    // 3. 找到输入框
-    const $textarea = $mes.find('textarea');
+    // 3. 找到输入框并模拟人工修改触发监听
+    const $textarea = $mes.find('textarea.edit_textarea');
     if ($textarea.length) {
-        $textarea.val(newText + ' '); 
-        $textarea[0].dispatchEvent(new Event('input', { bubbles: true })); 
+        // 先填入带空格的文本并触发 input 事件
+        $textarea.val(newText + ' ');
+        $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
         
-        $textarea.val(newText); 
+        // 立即删掉空格，再次触发 input 事件
+        // 这样 ST 的底层会检测到内容变动，从而激活“保存”按钮的状态
+        $textarea.val(newText);
         $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
 
-        // 4. 找到并点击保存按钮
-        const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit, .edit_submit_any');
+        // 4. 点击保存按钮
+        const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit');
         if ($saveBtn.length) {
             $saveBtn.click();
         } else {
-            // 如果找不到按钮，模拟按下 Ctrl+Enter 保存
+            // 模拟 Ctrl+Enter 快捷键保存
             const enterEvent = new KeyboardEvent('keydown', {
                 bubbles: true, cancelable: true, keyCode: 13, ctrlKey: true
             });
@@ -170,25 +174,24 @@ async function simulatePencilEdit(messageIndex, newText) {
 async function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
-    let chatChanged = false;
     
     if (window.chat && Array.isArray(window.chat)) {
-        // 使用普通 for 循环以便支持 await 异步等待
+        // 使用 for 循环确保 await 生效
         for (let i = 0; i < window.chat.length; i++) {
             let msg = window.chat[i];
             if (msg.mes) {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
+                    // 先改数据
                     msg.mes = cleaned; 
-                    chatChanged = true; 
-                    
+                    // 再通过物理模拟强行刷新 UI 
                     await simulatePencilEdit(i, cleaned);
                 }
             }
         }
     }
-    
-    if (chatChanged) saveChat(); 
+    // simulatePencilEdit 内部会自动触发 ST 的保存逻辑，这里 saveChat() 作为最后同步保险
+    saveChat(); 
     purifyDOM(document.getElementById('chat'), regex);
 }
 
