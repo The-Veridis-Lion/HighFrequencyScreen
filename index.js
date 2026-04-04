@@ -135,7 +135,7 @@ function performGlobalCleanse() {
     let chatChanged = false;
     
     if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach((msg) => {
+        window.chat.forEach((msg, index) => {
             let msgChanged = false; 
             
             // 1. 清理当前显示的主消息 (msg.mes)
@@ -147,21 +147,16 @@ function performGlobalCleanse() {
                 }
             }
             
-            // 2. 【核心修复】兼容新旧版酒馆的 Swipes (滑动分支) 数据结构
-            // 小铅笔读取的数据源就在这里，必须斩草除根
+            // 2. 清理所有滑动分支 (Swipes)，同时兼容新老版本酒馆的数据结构
             if (msg.swipes && Array.isArray(msg.swipes)) {
                 for (let i = 0; i < msg.swipes.length; i++) {
-                    
-                    // 兼容旧版酒馆：swipes 直接是字符串的情况
                     if (typeof msg.swipes[i] === 'string') {
                         const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
                         if (msg.swipes[i] !== cleanedSwipe) {
                             msg.swipes[i] = cleanedSwipe;
                             msgChanged = true;
                         }
-                    }
-                    // 兼容新版酒馆：swipes 是对象数组，文字藏在 .mes 属性里的情况
-                    else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
+                    } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
                         const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
                         if (msg.swipes[i].mes !== cleanedSwipe) {
                             msg.swipes[i].mes = cleanedSwipe;
@@ -171,11 +166,19 @@ function performGlobalCleanse() {
                 }
             }
 
-            if (msgChanged) chatChanged = true;
+            // 3. 如果修改了底层，立刻命令酒馆官方渲染器刷新气泡！
+            if (msgChanged) {
+                chatChanged = true;
+                try {
+                    if (typeof updateMessageBlock === 'function') {
+                        setTimeout(() => updateMessageBlock(index, window.chat[index]), 50);
+                    }
+                } catch(e) {}
+            }
         });
     }
     
-    // 3. 将洗刷干净的数据库强制存盘 (写入 .jsonl 文档)
+    // 4. 将洗刷干净的数据真正写入 .jsonl 文档
     if (chatChanged) {
         try {
             if (typeof saveChat === 'function') saveChat();
@@ -184,7 +187,7 @@ function performGlobalCleanse() {
         }
     }
     
-    // 4. 兜底屏幕视觉清理
+    // 5. 兜底屏幕视觉清理
     purifyDOM(document.getElementById('chat'), regex);
 }
 
@@ -385,7 +388,6 @@ function bindEvents() {
         renderTags();
     });
 
-    // ================= 修改：调用安全弹窗 =================
     $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
         showConfirmModal();
     });
@@ -396,15 +398,18 @@ function bindEvents() {
         if (regex) purifyDOM(document.getElementById('chat'), regex);
     };
 
-    // 2. 深度数据层清洗（生成完毕后专用）：调用原本的物理删除逻辑
-    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 300); 
+    // 2. 深度数据层清洗（延迟 1000ms 确保酒馆写入完成）
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
     
     // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
     if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
     
-    // 打字结束后 / 切换时：照常执行深度清理
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    // 打字彻底结束后（或被手动停止时）：执行底层物理删除 + 存入文档 + 刷新小铅笔
+    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
+    
+    // 其他常规操作时清理
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
 }
