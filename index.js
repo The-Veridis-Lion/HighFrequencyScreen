@@ -135,34 +135,59 @@ function performGlobalCleanse() {
     let chatChanged = false;
     
     if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach(msg => {
-            // 1. 清理当前显示的主消息
+        window.chat.forEach((msg) => {
+            let msgChanged = false; 
+            
+            // 1. 清理当前显示的主消息 (msg.mes)
             if (typeof msg.mes === 'string') {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
                     msg.mes = cleaned; 
-                    chatChanged = true; 
+                    msgChanged = true; 
                 }
             }
             
-            //清理所有滑动分支(Swipes/小铅笔)的历史记录
+            // 2. 【核心修复】兼容新旧版酒馆的 Swipes (滑动分支) 数据结构
+            // 小铅笔读取的数据源就在这里，必须斩草除根
             if (msg.swipes && Array.isArray(msg.swipes)) {
                 for (let i = 0; i < msg.swipes.length; i++) {
+                    
+                    // 兼容旧版酒馆：swipes 直接是字符串的情况
                     if (typeof msg.swipes[i] === 'string') {
                         const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
                         if (msg.swipes[i] !== cleanedSwipe) {
                             msg.swipes[i] = cleanedSwipe;
-                            chatChanged = true;
+                            msgChanged = true;
+                        }
+                    }
+                    // 兼容新版酒馆：swipes 是对象数组，文字藏在 .mes 属性里的情况
+                    else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
+                        const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
+                        if (msg.swipes[i].mes !== cleanedSwipe) {
+                            msg.swipes[i].mes = cleanedSwipe;
+                            msgChanged = true;
                         }
                     }
                 }
             }
+
+            if (msgChanged) chatChanged = true;
         });
     }
     
-    if (chatChanged) saveChat(); 
+    // 3. 将洗刷干净的数据库强制存盘 (写入 .jsonl 文档)
+    if (chatChanged) {
+        try {
+            if (typeof saveChat === 'function') saveChat();
+        } catch(e) {
+            console.error("[Ultimate Purifier] 存盘失败", e);
+        }
+    }
+    
+    // 4. 兜底屏幕视觉清理
     purifyDOM(document.getElementById('chat'), regex);
 }
+
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) { alert("请先添加屏蔽规则。"); return; }
