@@ -98,9 +98,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
 
 let dataCleanseTimer = null;
 
-/**
- * 设定定时器延迟执行底层数据清理
- */
+// 重置定时器执行数据清理函数
 function scheduleDataCleanse() {
     if (dataCleanseTimer) clearTimeout(dataCleanseTimer);
     dataCleanseTimer = setTimeout(() => {
@@ -108,10 +106,7 @@ function scheduleDataCleanse() {
     }, 1000);
 }
 
-/**
- * 遍历并修改DOM节点文本
- * 返回布尔值指示是否发生修改
- */
+// 遍历DOM节点读取并修改文本值
 function purifyDOM(rootNode, regex) {
     if (!rootNode) return false;
     let changed = false;
@@ -150,79 +145,57 @@ function purifyDOM(rootNode, regex) {
     return changed;
 }
 
-/**
- * 检查并清理全局聊天数据记录
- */
+// 遍历数据对象执行替换
 function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
     let chatChanged = false;
     
+    // 遍历聊天记录数组
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach((msg, index) => {
-            let msgChanged = false; 
-            
-            // 替换msg.mes属性
-            if (typeof msg.mes === 'string') {
-                const cleaned = msg.mes.replace(regex, dynamicReplacer);
-                if (msg.mes !== cleaned) { 
-                    msg.mes = cleaned; 
-                    msgChanged = true; 
-                }
-            }
-            
-            // 遍历msg.swipes并替换匹配项
-            if (msg.swipes && Array.isArray(msg.swipes)) {
-                for (let i = 0; i < msg.swipes.length; i++) {
-                    if (typeof msg.swipes[i] === 'string') {
-                        const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
-                        if (msg.swipes[i] !== cleanedSwipe) {
-                            msg.swipes[i] = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
-                        const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
-                        if (msg.swipes[i].mes !== cleanedSwipe) {
-                            msg.swipes[i].mes = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    }
-                }
-            }
-
-            // 调用系统函数更新UI区块
-            if (msgChanged) {
+            // 调用递归函数处理当前消息对象内的所有层级属性
+            const changes = safeDeepScrub(msg, regex, false);
+            if (changes > 0) {
                 chatChanged = true;
                 try {
+                    // 传入索引与对象更新页面DOM
                     if (typeof updateMessageBlock === 'function') {
-                        updateMessageBlock(index, window.chat[index]);
+                        updateMessageBlock(index, msg);
                     }
                 } catch(e) {}
             }
         });
     }
     
-    // 调用系统函数保存数据
+    // 遍历元数据对象
+    if (typeof chat_metadata === 'object' && chat_metadata !== null) {
+        const metaChanges = safeDeepScrub(chat_metadata, regex, false);
+        if (metaChanges > 0) {
+            chatChanged = true;
+        }
+    }
+
+    // 调用环境函数写入数据到文件
     if (chatChanged) {
         try {
             if (typeof saveChat === 'function') saveChat();
         } catch(e) {}
     }
     
+    // 传入指定节点执行替换
     purifyDOM(document.getElementById('chat'), regex);
 }
 
-/**
- * 遍历全量对象执行清理及强制页面刷新
- */
+// 遍历存储对象执行替换并调用重载函数
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
-    if (!regex) { alert("请先添加屏蔽规则。"); return; }
+    if (!regex) { alert("无规则"); return; }
 
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;">正在执行深度扫描与映射替换...</h2>
-            <p>正在同步数据到磁盘，请稍候。</p>
+            <h2 style="margin-bottom:20px;font-size:20px;">执行扫描与替换</h2>
+            <p>写入数据到磁盘</p>
         </div>
     `);
     await new Promise(r => setTimeout(r, 100));
@@ -240,20 +213,18 @@ async function performDeepCleanse() {
             await new Promise(r => setTimeout(r, 2000)); 
             $('#bl-loading-overlay').remove();
             
-            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
+            alert(`完成处理 ${scrubbedItems} 处匹配项\n\n页面将刷新，请在刷新后将预设切换回原状态`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未发现需要替换的数据残留。\n\n您可以安全地将系统预设切换回您的常用预设了。");
+            alert("未发现匹配项\n\n可将预设切换回原状态");
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
     }
 }
 
-/**
- * 监听DOM变化并执行文本替换
- */
+// 设定观察器监听节点变动
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
@@ -284,7 +255,7 @@ function initRealtimeInterceptor() {
             }
         });
 
-        // 若DOM发生修改，重置底层数据清理定时器
+        // 依据节点变动状态调用函数
         if (domChanged) {
             scheduleDataCleanse();
         }
@@ -293,7 +264,7 @@ function initRealtimeInterceptor() {
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
-    // 监听输入框事件
+    // 绑定事件到输入节点
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
@@ -310,13 +281,11 @@ function initRealtimeInterceptor() {
     }, true);
 }
 
-/**
- * 构造DOM结构追加至页面
- */
+// 构造节点并写入文档树
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="词汇映射管理">
+            <div id="bl-wand-btn" title="词汇映射">
                 <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
             </div>`);
     }
@@ -324,18 +293,18 @@ function setupUI() {
         $('body').append(`
             <div id="bl-purifier-popup">
                 <div class="bl-header">
-                    <h3 class="bl-title">全局屏蔽与映射规则</h3>
+                    <h3 class="bl-title">屏蔽与映射规则</h3>
                     <button id="bl-close-btn" class="bl-close">&times;</button>
                 </div>
                 <div class="bl-rule-builder">
-                    <textarea id="bl-target-input" class="bl-textarea" placeholder="输入目标词 (必填，支持批量，逗号/空格分隔)" rows="2"></textarea>
+                    <textarea id="bl-target-input" class="bl-textarea" placeholder="输入目标词 (必填，逗号/空格分隔)" rows="2"></textarea>
                     <div class="bl-rule-arrow">⬇️ 随机替换为 ⬇️</div>
-                    <textarea id="bl-rep-input" class="bl-textarea" placeholder="输入替换词 (可选，支持批量)。不填则直接删除目标词" rows="2"></textarea>
-                    <button id="bl-add-rule-btn" class="bl-add-rule-btn">添加规则组</button>
+                    <textarea id="bl-rep-input" class="bl-textarea" placeholder="输入替换词 (可选)。不填则删除目标词" rows="2"></textarea>
+                    <button id="bl-add-rule-btn" class="bl-add-rule-btn">添加规则</button>
                 </div>
                 <div id="bl-tags-container" style="margin-top:15px;"></div>
                 <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
+                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">扫描与替换</button>
                 </div>
             </div>`);
     }
@@ -343,18 +312,18 @@ function setupUI() {
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
             <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; backdrop-filter:blur(3px);">
-                <div style="background:#222; padding:30px; border-radius:10px; max-width:450px; text-align:center; box-shadow: 0 4px 20px rgba(0,0,0,0.8); border: 1px solid #555;">
-                    <h3 style="color:#ff4d4d; margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
+                <div style="background:#222; padding:30px; border-radius:10px; max-width:450px; text-align:center; border: 1px solid #555;">
+                    <h3 style="color:#ff4d4d; margin-top:0; font-size: 22px;">警告</h3>
                     <p style="font-size:15px; color:#ddd; line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                        为了防止深度清理修改系统预设(Preset)，请执行以下操作：
+                        执行以下操作：
                         <br><br>
-                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将当前的系统预设切换至「Default」或废弃预设</strong>
+                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将预设切换至「Default」或废弃预设</strong>
                         <br>
-                        <span style="font-size:13px; color:#aaa;">清理完成后页面将刷新，重置回原预设即可。</span>
+                        <span style="font-size:13px; color:#aaa;">页面刷新后，重置回原预设</span>
                     </p>
                     <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; font-weight:bold; transition: 0.2s;">取消</button>
-                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:6px; background:#660000; color:#aaa; cursor:not-allowed; font-weight:bold; transition: 0.2s;">确认清理 (3s)</button>
+                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; transition: 0.2s;">取消</button>
+                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:6px; background:#660000; color:#aaa; cursor:not-allowed; transition: 0.2s;">确认 (3s)</button>
                     </div>
                 </div>
             </div>
@@ -364,9 +333,7 @@ function setupUI() {
     }
 }
 
-/**
- * 修改样式展示确认模态框并执行倒计时
- */
+// 变更节点样式展示模态框并执行定时机制
 function showConfirmModal() {
     const $modal = $('#bl-confirm-modal');
     const $confirmBtn = $('#bl-modal-confirm');
@@ -376,17 +343,17 @@ function showConfirmModal() {
     $confirmBtn.prop('disabled', true).css({ background: '#660000', color: '#aaa', cursor: 'not-allowed' });
     
     let timeLeft = 3;
-    $confirmBtn.text(`确认清理 (${timeLeft}s)`);
+    $confirmBtn.text(`确认 (${timeLeft}s)`);
     
     const timer = setInterval(() => {
         timeLeft--;
         if (timeLeft > 0) {
-            $confirmBtn.text(`确认清理 (${timeLeft}s)`);
+            $confirmBtn.text(`确认 (${timeLeft}s)`);
         } else {
             clearInterval(timer);
             $confirmBtn.prop('disabled', false)
                        .css({ background: '#d32f2f', color: 'white', cursor: 'pointer' })
-                       .text('我已切换，确认清理');
+                       .text('已切换，确认');
             $confirmBtn.hover(function(){ $(this).css('background', '#f44336') }, function(){ $(this).css('background', '#d32f2f') });
         }
     }, 1000);
@@ -405,9 +372,7 @@ function showConfirmModal() {
     });
 }
 
-/**
- * 绑定UI事件与系统数据事件
- */
+// 绑定环境事件到函数
 function bindEvents() {
     $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
@@ -438,7 +403,7 @@ function bindEvents() {
         showConfirmModal();
     });
 
-    // 绑定系统事件至数据清理防抖函数
+    // 绑定环境对象事件
     if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, scheduleDataCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, scheduleDataCleanse); 
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, scheduleDataCleanse); 
@@ -446,14 +411,12 @@ function bindEvents() {
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, scheduleDataCleanse);          
 }
 
-/**
- * 读取设置并输出HTML结构至界面
- */
+// 读取数组对象并拼接HTML字符输出至节点
 function renderTags() {
     const rules = extension_settings[extensionName].rules || [];
     const html = rules.map((r, i) => {
         const fullTargets = r.targets.join(', ');
-        const fullReps = r.replacements.length > 0 ? r.replacements.join(', ') : '无 (直接删除)';
+        const fullReps = r.replacements.length > 0 ? r.replacements.join(', ') : '无 (删除)';
         
         return `<div class="bl-tag" title="目标:\n${fullTargets}\n\n替换为:\n${fullReps}">
             <div class="bl-tag-layout">
@@ -465,16 +428,14 @@ function renderTags() {
                     <b style="color:var(--bl-accent-color)">${fullReps}</b>
                 </div>
             </div>
-            <div class="bl-tag-del" data-index="${i}" title="删除规则">&times;</div>
+            <div class="bl-tag-del" data-index="${i}" title="删除">&times;</div>
         </div>`;
     }).join('');
     
-    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; padding: 10px 0;">当前无规则</div>');
+    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; padding: 10px 0;">无规则</div>');
 }
 
-/**
- * 检查旧版配置并写入新版数据结构
- */
+// 检索并转换配置对象内的数组属性
 function migrateOldData() {
     const settings = extension_settings[extensionName];
     if (settings && settings.bannedWords) {
@@ -508,6 +469,7 @@ jQuery(() => {
         performGlobalCleanse(); 
     };
     
+    // 监听加载事件执行初始化函数
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
         if (document.getElementById('send_textarea')) boot();
