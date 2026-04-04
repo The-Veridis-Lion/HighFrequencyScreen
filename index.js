@@ -61,6 +61,26 @@ function dynamicReplacer(match) {
 }
 
 /**
+ * UI 保护区检测：判断当前元素是否处于系统预设、设置面板或输入框中
+ */
+function isProtectedNode(node) {
+    if (!node || !node.closest) return false;
+    
+    // 1. 保护主发送框和气泡编辑框
+    if (node.id === 'send_textarea' || node.classList.contains('edit_textarea')) return true;
+    
+    // 2. 保护本插件自身的设置界面
+    if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal')) return true;
+    
+    // 3. ★ 核心：保护所有酒馆的 UI 界面（右侧预设菜单、所有弹窗、顶部状态栏、左侧抽屉等）
+    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * 递归洗刷对象
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
@@ -97,7 +117,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
 }
 
 /**
- * 扫描并清理指定 DOM
+ * 扫描并清理指定 DOM (加入保护区检测)
  */
 function purifyDOM(rootNode, regex) {
     if (!rootNode) return;
@@ -106,10 +126,11 @@ function purifyDOM(rootNode, regex) {
     let node;
     while (node = walker.nextNode()) {
         const parent = node.parentNode;
-        if (parent) {
-            if (parent.id === 'send_textarea' || (parent.classList && parent.classList.contains('edit_textarea'))) continue;
-            if (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))) continue;
+        // 如果文本节点所在的父级属于受保护区域，或者用户正在聚焦编辑，则跳过
+        if (parent && (isProtectedNode(parent) || (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))))) {
+            continue;
         }
+        
         const original = node.nodeValue || '';
         const cleaned = original.replace(regex, dynamicReplacer);
         if (original !== cleaned) node.nodeValue = cleaned;
@@ -121,7 +142,8 @@ function purifyDOM(rootNode, regex) {
         if (rootNode.querySelectorAll) inputs.push(...Array.from(rootNode.querySelectorAll('input, textarea')));
 
         inputs.forEach(input => {
-            if (input.id === 'send_textarea' || input.classList.contains('edit_textarea') || document.activeElement === input) return;
+            // 过滤受保护的输入框和当前正在打字的输入框
+            if (isProtectedNode(input) || document.activeElement === input) return;
             const originalVal = input.value || '';
             const cleanedVal = originalVal.replace(regex, dynamicReplacer);
             if (originalVal !== cleanedVal) input.value = cleanedVal;
@@ -236,6 +258,8 @@ function initRealtimeInterceptor() {
         mutations.forEach(m => {
             m.addedNodes.forEach(node => {
                 if (node.nodeType === 3 || node.nodeType === 8) { 
+                    // 额外防线：检查文本节点的父级
+                    if (node.parentNode && isProtectedNode(node.parentNode)) return;
                     const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
                     if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
                 } else if (node.nodeType === 1) { 
@@ -243,16 +267,23 @@ function initRealtimeInterceptor() {
                 }
             });
             if (m.type === 'characterData') {
+                if (m.target.parentNode && isProtectedNode(m.target.parentNode)) return;
                 const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
                 if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
             }
         });
     });
+    
+    // 只监听实际的聊天气泡区域
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
+    // 全局打字监听器
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
+        // ★ 在这里拦截：如果打字的目标输入框属于保护区（预设面板等），直接 return 放行，不执行过滤
+        if (isProtectedNode(e.target)) return;
+        
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
             let val = e.target.value || e.target.innerText;
             if (val && val.match(regex)) {
@@ -266,7 +297,6 @@ function initRealtimeInterceptor() {
         }
     }, true);
 }
-
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
