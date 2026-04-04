@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, chat } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [] };
