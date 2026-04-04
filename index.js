@@ -129,27 +129,65 @@ function purifyDOM(rootNode, regex) {
     }
 }
 
-function performGlobalCleanse() {
+/**
+ *物理模拟点击小铅笔、触发输入事件并保存
+ */
+async function simulatePencilEdit(messageIndex, newText) {
+    const $mes = $(.mes[mesid="${messageIndex}"]);
+    if (!$mes.length) return;
+
+    // 1. 找到并点击编辑按钮 (小铅笔)
+    const $editBtn = $mes.find('.mes_edit');
+    if (!$editBtn.length) return;
+    $editBtn.click(); // 触发 ST 打开编辑框
+
+    // 2. 给 UI 50毫秒的时间渲染输入框
+    await new Promise(r => setTimeout(r, 50));
+
+    // 3. 找到输入框
+    const $textarea = $mes.find('textarea');
+    if ($textarea.length) {
+        $textarea.val(newText + ' '); 
+        $textarea[0].dispatchEvent(new Event('input', { bubbles: true })); 
+        
+        $textarea.val(newText); 
+        $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
+
+        // 4. 找到并点击保存按钮
+        const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit, .edit_submit_any');
+        if ($saveBtn.length) {
+            $saveBtn.click();
+        } else {
+            // 如果找不到按钮，模拟按下 Ctrl+Enter 保存
+            const enterEvent = new KeyboardEvent('keydown', {
+                bubbles: true, cancelable: true, keyCode: 13, ctrlKey: true
+            });
+            $textarea[0].dispatchEvent(enterEvent);
+        }
+    }
+}
+
+async function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
     let chatChanged = false;
+    
     if (window.chat && Array.isArray(window.chat)) {
-        // 这里在 forEach 中增加了 index 参数
-        window.chat.forEach((msg, index) => {
+        // 使用普通 for 循环以便支持 await 异步等待
+        for (let i = 0; i < window.chat.length; i++) {
+            let msg = window.chat[i];
             if (msg.mes) {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
                     msg.mes = cleaned; 
                     chatChanged = true; 
                     
-                    // 模拟完成编辑操作：直接通知 ST 重新渲染当前这个消息气泡
-                    if (typeof updateMessageBlock === 'function') {
-                        updateMessageBlock(index, msg);
-                    }
+                    await simulatePencilEdit(i, cleaned);
                 }
             }
-        });
+        }
     }
+    
     if (chatChanged) saveChat(); 
     purifyDOM(document.getElementById('chat'), regex);
 }
