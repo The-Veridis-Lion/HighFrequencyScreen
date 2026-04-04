@@ -362,14 +362,32 @@ function bindEvents() {
         }
     });
 
-    // 【性能优化核心】：移除了流式打字期间 (MESSAGE_EDITED) 的所有清理操作！
-    // 现在只有在生成停止、收到新消息、或者划出新回复时，才执行针对"单条消息"的极速清洗
+    // 只锁死最后一条气泡的 DOM，不碰后台数据
+    let streamThrottle = false;
+    const visualCleanseLatestOnly = () => {
+        // 限制每 150 毫秒最多执行一次
+        if (streamThrottle) return;
+        streamThrottle = true;
+        setTimeout(() => { streamThrottle = false; }, 150);
+
+        const regex = getPurifyRegex();
+        if (!regex) return;
+        
+        // 只精准定位当前正在生成的最后一条消息
+        const lastMesEl = document.querySelector('.mes:last-child');
+        if (lastMesEl) purifyDOM(lastMesEl, regex);
+    };
+
+    // 流式打字中：触发前端视觉屏蔽
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseLatestOnly);     
+    
+    // 生成完毕 / 切换状态时：直接深度洗底层数据
     const delayedLightCleanse = () => setTimeout(cleanseLatestMessage, 300); 
     
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedLightCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedLightCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedLightCleanse);     
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedLightCleanse);         
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedLightCleanse);   
 }
 
 function renderTags() {
