@@ -137,9 +137,13 @@ async function simulatePencilEdit(messageIndex, newText) {
     const $mes = $(`.mes[mesid="${messageIndex}"]`);
     if (!$mes.length) return;
 
-    // 1. 找到并点击编辑按钮
+    // 1. 找到并点击编辑按钮 (小铅笔)
     const $editBtn = $mes.find('.mes_edit');
     if (!$editBtn.length) return;
+    
+    // 如果已经处于编辑状态，则不再点击
+    if ($mes.find('textarea.edit_textarea').length > 0) return;
+    
     $editBtn.click(); 
 
     // 2. 给 UI 渲染留出时间
@@ -148,41 +152,62 @@ async function simulatePencilEdit(messageIndex, newText) {
     // 3. 找到编辑框并强行填入
     const $textarea = $mes.find('textarea.edit_textarea');
     if ($textarea.length) {
-        // 先加个空格触发变动，再填回原样，彻底激活 ST 的监听
+        // 模拟用户输入：加空格再删掉，彻底激活 ST 的变动监听
         $textarea.val(newText + ' ');
         $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
         
         $textarea.val(newText);
         $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
 
-        // 4. 点击保存按钮（使用更全的选择器）
+        // 4. 点击保存按钮
         const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit, .edit_submit_any');
         if ($saveBtn.length) {
             $saveBtn.click();
-            // 关键：等待保存动作完成，防止下一个消息保存时冲突
-            await new Promise(r => setTimeout(r, 200));
+            // 等待保存动作完成，防止请求堆积
+            await new Promise(r => setTimeout(r, 300));
         }
     }
 }
 
+let isCleansing = false; // 防止递归死循环的锁
+
 async function performGlobalCleanse() {
+    if (isCleansing) return;
     const regex = getPurifyRegex();
     if (!regex) return;
     
+    isCleansing = true;
+    let chatChanged = false;
+    let lastMsgIndex = -1;
+    
     if (window.chat && Array.isArray(window.chat)) {
+        lastMsgIndex = window.chat.length - 1;
+        
         for (let i = 0; i < window.chat.length; i++) {
             let msg = window.chat[i];
             if (msg.mes) {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
-                    // 直接交给物理模拟函数，让它通过 UI 填入并点击保存
-                    await simulatePencilEdit(i, cleaned);
+                    if (i === lastMsgIndex) {
+                        // 【最新消息】执行模拟点击，因为它直接决定了 UI 是否即时删除
+                        await simulatePencilEdit(i, cleaned);
+                    } else {
+                        // 【旧消息】直接改数据，不触发 UI 点击，减少压力
+                        msg.mes = cleaned;
+                        chatChanged = true;
+                    }
                 }
             }
         }
     }
-    // 删除了这里的 saveChat()，防止冲突
+    
+    // 只有在修改了旧消息且没有触发模拟点击（模拟点击自带保存）的情况下，才手动保存
+    if (chatChanged) {
+        await saveChat();
+    }
+    
     purifyDOM(document.getElementById('chat'), regex);
+    isCleansing = false;
 }
 
 async function performDeepCleanse() {
