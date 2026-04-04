@@ -239,11 +239,11 @@ async function performDeepCleanse() {
             $('#bl-loading-overlay').remove();
             
             // ================= 新增成功后的切回预设提醒 =================
-            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
+            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回常用预设】以恢复工作状态！`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未发现需要替换的数据残留。\n\n您可以安全地将系统预设切换回您的常用预设了。");
+            alert("未发现需要替换的数据残留。\n\n可以安全地将系统预设切换回您的常用预设了。");
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
@@ -297,6 +297,7 @@ function initRealtimeInterceptor() {
         }
     }, true);
 }
+
 function setupUI() {
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
@@ -324,33 +325,33 @@ function setupUI() {
             </div>`);
     }
 
-    // ================= 新增：深度清理二次确认弹窗 (带3秒倒计时) =================
+    // ================= 深度清理二次确认弹窗 =================
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
-            <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; backdrop-filter:blur(3px);">
-                <div style="background:#222; padding:30px; border-radius:10px; max-width:450px; text-align:center; box-shadow: 0 4px 20px rgba(0,0,0,0.8); border: 1px solid #555;">
-                    <h3 style="color:#ff4d4d; margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
+            <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
+                <div style="background:var(--bl-background-popup); padding:30px; border-radius:12px; max-width:450px; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color);">
+                    <h3 style="color:var(--bl-danger-color); margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
                     
-                    <p style="font-size:15px; color:#ddd; line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                        为了绝对防止深度清理修改您的常用系统预设(Preset)，请在此刻：
+                    <p style="font-size:15px; color:var(--bl-text-primary); line-height:1.6; margin:0 0 25px 0; text-align:left;">
+                        为了防止深度清理修改您的常用预设(Preset)，请在此刻：
                         <br><br>
-                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将SillyTavern当前的系统预设切换至「Default」或任意废弃预设！</strong>
+                        👉 <strong style="color:var(--bl-danger-color); background:var(--bl-background-secondary); padding:6px 10px; border-radius:6px; display:inline-block; margin-bottom:10px; border: 1px solid var(--bl-border-color);">将SillyTavern当前的预设切换至「Default」或任意废弃预设！</strong>
                         <br>
-                        <span style="font-size:13px; color:#aaa;">清理完成后页面会刷新，届时您再切回原预设即可保证您的安全。</span>
+                        <span style="font-size:13px; color:var(--bl-text-secondary);">清理完成后页面会刷新，届时可切回原预设即可保证预设安全。</span>
                     </p>
 
                     <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; font-weight:bold; transition: 0.2s;">取消返回</button>
-                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:6px; background:#660000; color:#aaa; cursor:not-allowed; font-weight:bold; transition: 0.2s;">确认清理 (3s)</button>
+                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:1px solid var(--bl-border-color); border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-primary); cursor:pointer; font-weight:bold; transition: opacity 0.2s;">取消返回</button>
+                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-secondary); cursor:not-allowed; font-weight:bold; transition: opacity 0.2s; opacity: 0.6;">我已阅读警告，已完成切换预设 (3s)</button>
                     </div>
                 </div>
             </div>
         `);
         
-        $('#bl-modal-cancel').hover(function(){ $(this).css('background', '#777') }, function(){ $(this).css('background', '#555') });
+        // 使用透明度变化代替写死颜色，更自然地适配所有主题
+        $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
     }
 }
-
 /**
  * 触发带倒计时的确认弹窗
  */
