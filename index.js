@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, updateMessageBlock } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [] };
@@ -134,10 +134,19 @@ function performGlobalCleanse() {
     if (!regex) return;
     let chatChanged = false;
     if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach(msg => {
+        // 这里在 forEach 中增加了 index 参数
+        window.chat.forEach((msg, index) => {
             if (msg.mes) {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
-                if (msg.mes !== cleaned) { msg.mes = cleaned; chatChanged = true; }
+                if (msg.mes !== cleaned) { 
+                    msg.mes = cleaned; 
+                    chatChanged = true; 
+                    
+                    // 模拟完成编辑操作：直接通知 ST 重新渲染当前这个消息气泡
+                    if (typeof updateMessageBlock === 'function') {
+                        updateMessageBlock(index, msg);
+                    }
+                }
             }
         });
     }
