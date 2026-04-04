@@ -133,40 +133,34 @@ function purifyDOM(rootNode, regex) {
  * 物理模拟点击小铅笔、触发输入事件并保存
  */
 async function simulatePencilEdit(messageIndex, newText) {
-    // 【修复点】添加了反引号，确保选择器字符串合法
+    // 【修复】必须使用反引号包裹选择器字符串
     const $mes = $(`.mes[mesid="${messageIndex}"]`);
     if (!$mes.length) return;
 
-    // 1. 找到并点击编辑按钮 (小铅笔)
+    // 1. 找到并点击编辑按钮
     const $editBtn = $mes.find('.mes_edit');
     if (!$editBtn.length) return;
     $editBtn.click(); 
 
-    // 2. 等待编辑框弹出
+    // 2. 给 UI 渲染留出时间
     await new Promise(r => setTimeout(r, 100));
 
-    // 3. 找到输入框并模拟人工修改触发监听
+    // 3. 找到编辑框并强行填入
     const $textarea = $mes.find('textarea.edit_textarea');
     if ($textarea.length) {
-        // 先填入带空格的文本并触发 input 事件
+        // 先加个空格触发变动，再填回原样，彻底激活 ST 的监听
         $textarea.val(newText + ' ');
         $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
         
-        // 立即删掉空格，再次触发 input 事件
-        // 这样 ST 的底层会检测到内容变动，从而激活“保存”按钮的状态
         $textarea.val(newText);
         $textarea[0].dispatchEvent(new Event('input', { bubbles: true }));
 
-        // 4. 点击保存按钮
-        const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit');
+        // 4. 点击保存按钮（使用更全的选择器）
+        const $saveBtn = $mes.find('.mes_edit_done, .mes_edit_save, .edit_submit, .edit_submit_any');
         if ($saveBtn.length) {
             $saveBtn.click();
-        } else {
-            // 模拟 Ctrl+Enter 快捷键保存
-            const enterEvent = new KeyboardEvent('keydown', {
-                bubbles: true, cancelable: true, keyCode: 13, ctrlKey: true
-            });
-            $textarea[0].dispatchEvent(enterEvent);
+            // 关键：等待保存动作完成，防止下一个消息保存时冲突
+            await new Promise(r => setTimeout(r, 200));
         }
     }
 }
@@ -176,22 +170,18 @@ async function performGlobalCleanse() {
     if (!regex) return;
     
     if (window.chat && Array.isArray(window.chat)) {
-        // 使用 for 循环确保 await 生效
         for (let i = 0; i < window.chat.length; i++) {
             let msg = window.chat[i];
             if (msg.mes) {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
                 if (msg.mes !== cleaned) { 
-                    // 先改数据
-                    msg.mes = cleaned; 
-                    // 再通过物理模拟强行刷新 UI 
+                    // 直接交给物理模拟函数，让它通过 UI 填入并点击保存
                     await simulatePencilEdit(i, cleaned);
                 }
             }
         }
     }
-    // simulatePencilEdit 内部会自动触发 ST 的保存逻辑，这里 saveChat() 作为最后同步保险
-    saveChat(); 
+    // 删除了这里的 saveChat()，防止冲突
     purifyDOM(document.getElementById('chat'), regex);
 }
 
@@ -213,10 +203,10 @@ async function performDeepCleanse() {
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
         if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
 
+        // 在 performDeepCleanse 函数内部找到 saveChat 的地方
         if (scrubbedItems > 0) {
-            const saveChatPromise = saveChat();
-            if (saveChatPromise instanceof Promise) await saveChatPromise;
-            saveSettingsDebounced(); 
+        await saveChat(); // 确保这里有 await
+        saveSettingsDebounced(); 
             await new Promise(r => setTimeout(r, 2000)); 
             alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n请切回您原来的预设，页面即将刷新。`);
             location.reload(); 
