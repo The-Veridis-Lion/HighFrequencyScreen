@@ -134,8 +134,8 @@ function performGlobalCleanse() {
     if (!regex) return;
     let chatChanged = false;
     
-    if (window.chat && Array.isArray(window.chat)) {
-        window.chat.forEach((msg, index) => {
+    if (chat && Array.isArray(chat)) {
+        chat.forEach((msg, index) => {
             let msgChanged = false; 
             
             // 1. 清理当前显示的主消息 (msg.mes)
@@ -171,7 +171,7 @@ function performGlobalCleanse() {
                 chatChanged = true;
                 try {
                     if (typeof updateMessageBlock === 'function') {
-                        setTimeout(() => updateMessageBlock(index, window.chat[index]), 50);
+                        setTimeout(() => updateMessageBlock(index, chat[index]), 50);
                     }
                 } catch(e) {}
             }
@@ -205,7 +205,7 @@ async function performDeepCleanse() {
 
     try {
         let scrubbedItems = 0;
-        if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
+        if (chat && Array.isArray(chat)) scrubbedItems += safeDeepScrub(chat, regex, false);
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
         if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
 
