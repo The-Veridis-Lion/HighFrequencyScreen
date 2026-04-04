@@ -1,5 +1,5 @@
 import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, updateMessageBlock } from "../../../../script.js";
+import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [] };
@@ -61,7 +61,7 @@ function dynamicReplacer(match) {
 }
 
 /**
- * 递归洗刷对象 (深度清理的灵魂)
+ * 递归洗刷对象
  */
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
@@ -129,69 +129,99 @@ function purifyDOM(rootNode, regex) {
     }
 }
 
-let isCleansing = false; // 防止递归死循环的锁
-
-/**
- * 【日常全自动版】每次聊天/生成结束自动运行的轻量深度清理
- * 只针对当前的对话数组和对话元数据，洗干净了小铅笔自然干净
- */
-async function performAutoChatCleanse() {
-    if (isCleansing) return;
+function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
+    let chatChanged = false;
     
-    isCleansing = true;
-    let scrubbedItems = 0;
-    
-    // 深度清洗当前记录
     if (window.chat && Array.isArray(window.chat)) {
-        scrubbedItems += safeDeepScrub(window.chat, regex, false);
-    }
-    // 深度清洗当前元数据
-    if (typeof chat_metadata === 'object' && chat_metadata !== null) {
-        scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
+        window.chat.forEach((msg, index) => {
+            let msgChanged = false; 
+            
+            // 1. 清理当前显示的主消息 (msg.mes)
+            if (typeof msg.mes === 'string') {
+                const cleaned = msg.mes.replace(regex, dynamicReplacer);
+                if (msg.mes !== cleaned) { 
+                    msg.mes = cleaned; 
+                    msgChanged = true; 
+                }
+            }
+            
+            // 2. 清理所有滑动分支 (Swipes)，同时兼容新老版本酒馆的数据结构
+            if (msg.swipes && Array.isArray(msg.swipes)) {
+                for (let i = 0; i < msg.swipes.length; i++) {
+                    if (typeof msg.swipes[i] === 'string') {
+                        const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
+                        if (msg.swipes[i] !== cleanedSwipe) {
+                            msg.swipes[i] = cleanedSwipe;
+                            msgChanged = true;
+                        }
+                    } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
+                        const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
+                        if (msg.swipes[i].mes !== cleanedSwipe) {
+                            msg.swipes[i].mes = cleanedSwipe;
+                            msgChanged = true;
+                        }
+                    }
+                }
+            }
+
+            // 3. 如果修改了底层，立刻命令酒馆官方渲染器刷新气泡！
+            if (msgChanged) {
+                chatChanged = true;
+                try {
+                    if (typeof updateMessageBlock === 'function') {
+                        setTimeout(() => updateMessageBlock(index, window.chat[index]), 50);
+                    }
+                } catch(e) {}
+            }
+        });
     }
     
-    if (scrubbedItems > 0) {
-        await saveChat(); // 底层数据变了，存一下盘
+    // 4. 将洗刷干净的数据真正写入 .jsonl 文档
+    if (chatChanged) {
+        try {
+            if (typeof saveChat === 'function') saveChat();
+        } catch(e) {
+            console.error("[Ultimate Purifier] 存盘失败", e);
+        }
     }
     
-    // 视觉层清理兜底，保证当前屏幕上的字眼也换掉
+    // 5. 兜底屏幕视觉清理
     purifyDOM(document.getElementById('chat'), regex);
-    isCleansing = false;
 }
 
-/**
- * 【手动高危版】只留给点击红色的深度清理按钮使用
- * 专门处理预设、系统扩展等其他深层数据，保护隔离
- */
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) { alert("请先添加屏蔽规则。"); return; }
 
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2>正在扫描扩展与系统设置层的数据...</h2>
+            <h2 style="margin-bottom:20px;font-size:20px;">正在执行深度扫描与映射替换...</h2>
+            <p>正在同步数据到磁盘，请稍候。</p>
         </div>
     `);
     await new Promise(r => setTimeout(r, 100));
 
     try {
         let scrubbedItems = 0;
-        
-        // 剥离了 chat，这里只扫描全局高危设置
-        if (typeof extension_settings === 'object' && extension_settings !== null) {
-            scrubbedItems += safeDeepScrub(extension_settings, regex, true);
-        }
+        if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
+        if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
+        if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
 
         if (scrubbedItems > 0) {
+            const saveChatPromise = saveChat();
+            if (saveChatPromise instanceof Promise) await saveChatPromise;
             saveSettingsDebounced(); 
             await new Promise(r => setTimeout(r, 2000)); 
-            alert(`设置层清理完成，共处理 ${scrubbedItems} 处匹配项。\n请切回您原来的预设，页面即将刷新。`);
+            $('#bl-loading-overlay').remove();
+            
+            // ================= 新增成功后的切回预设提醒 =================
+            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回您的常用预设】以恢复工作状态！`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未在系统设置中发现需要替换的数据残留。您可以切回预设了。");
+            alert("未发现需要替换的数据残留。\n\n您可以安全地将系统预设切换回您的常用预设了。");
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
@@ -226,20 +256,12 @@ function initRealtimeInterceptor() {
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
             let val = e.target.value || e.target.innerText;
             if (val && val.match(regex)) {
+                const cleaned = val.replace(regex, dynamicReplacer);
                 if (e.target.value !== undefined) {
-                    const start = e.target.selectionStart;
-                    const end = e.target.selectionEnd;
-                    const originalLength = val.length;
-                    const cleaned = val.replace(regex, dynamicReplacer);
-                    
-                    if (val !== cleaned) {
-                        e.target.value = cleaned;
-                        const diff = cleaned.length - originalLength;
-                        try { e.target.setSelectionRange(start + diff, end + diff); } catch(err){}
-                    }
-                } else { 
-                    e.target.innerText = val.replace(regex, dynamicReplacer); 
-                }
+                    const pos = e.target.selectionStart;
+                    e.target.value = cleaned;
+                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
+                } else { e.target.innerText = cleaned; }
             }
         }
     }, true);
@@ -267,33 +289,77 @@ function setupUI() {
                 </div>
                 <div id="bl-tags-container" style="margin-top:15px;"></div>
                 <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度清理系统设置 (高危)</button>
+                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
                 </div>
             </div>`);
     }
 
-    if (!$('#bl-warning-overlay').length) {
+    // ================= 新增：深度清理二次确认弹窗 (带3秒倒计时) =================
+    if (!$('#bl-confirm-modal').length) {
         $('body').append(`
-            <div id="bl-warning-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:9999998; backdrop-filter:blur(2px);"></div>
-            <div id="bl-warning-popup" style="display:none; position:fixed; top:25vh; left:50%; transform:translateX(-50%); width:90%; max-width:420px; background:var(--bl-background-popup, #fff); border:2px solid var(--bl-danger-color, #ff4757); border-radius:12px; z-index:9999999; padding:25px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
-                <h3 style="color:var(--bl-danger-color, #ff4757); margin:0 0 15px 0; font-size:20px; display:flex; align-items:center; gap:8px;">
-                    ⚠️ 系统级深度清理警告！
-                </h3>
-                <p style="font-size:15px; color:var(--bl-text-primary, #333); line-height:1.6; margin:0 0 20px 0;">
-                    日常聊天早已自动清洗完毕。此按钮仅用于彻底清理过往扩展设置及底层残存。<br><br>
-                    为了防止误删您的常用预设(Preset)，请在此刻：
-                    <br><br>
-                    👉 <strong style="color:var(--bl-danger-color, #ff4757); background:rgba(255,71,87,0.1); padding:2px 4px; border-radius:4px;">将 ST 当前的系统预设切换至「Default」或任意废弃预设！</strong>
-                    <br><br>
-                    <span style="font-size:13px; color:var(--bl-text-secondary, #666);">清理完成后页面会刷新，届时您再切回原预设即可保证预设完整性。</span>
-                </p>
-                <div style="display:flex; justify-content:flex-end; gap:12px;">
-                    <button id="bl-warning-cancel" style="padding:10px 18px; border-radius:8px; border:1px solid var(--bl-border-color, #ccc); background:transparent; color:var(--bl-text-primary, #333); cursor:pointer; font-weight:bold;">取消清理</button>
-                    <button id="bl-warning-confirm" disabled style="padding:10px 18px; border-radius:8px; border:none; background:var(--bl-danger-color, #ff4757); color:white; cursor:not-allowed; opacity:0.5; font-weight:bold; transition:all 0.2s;">我已切走预设 (3s)</button>
+            <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; backdrop-filter:blur(3px);">
+                <div style="background:#222; padding:30px; border-radius:10px; max-width:450px; text-align:center; box-shadow: 0 4px 20px rgba(0,0,0,0.8); border: 1px solid #555;">
+                    <h3 style="color:#ff4d4d; margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
+                    
+                    <p style="font-size:15px; color:#ddd; line-height:1.6; margin:0 0 25px 0; text-align:left;">
+                        为了绝对防止深度清理修改您的常用系统预设(Preset)，请在此刻：
+                        <br><br>
+                        👉 <strong style="color:#ff4757; background:rgba(255,71,87,0.15); padding:4px 6px; border-radius:4px; display:inline-block; margin-bottom:10px;">将SillyTavern当前的系统预设切换至「Default」或任意废弃预设！</strong>
+                        <br>
+                        <span style="font-size:13px; color:#aaa;">清理完成后页面会刷新，届时您再切回原预设即可保证您的安全。</span>
+                    </p>
+
+                    <div style="display:flex; justify-content:space-between; gap:15px;">
+                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:none; border-radius:6px; background:#555; color:white; cursor:pointer; font-weight:bold; transition: 0.2s;">取消返回</button>
+                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:6px; background:#660000; color:#aaa; cursor:not-allowed; font-weight:bold; transition: 0.2s;">确认清理 (3s)</button>
+                    </div>
                 </div>
             </div>
         `);
+        
+        $('#bl-modal-cancel').hover(function(){ $(this).css('background', '#777') }, function(){ $(this).css('background', '#555') });
     }
+}
+
+/**
+ * 触发带倒计时的确认弹窗
+ */
+function showConfirmModal() {
+    const $modal = $('#bl-confirm-modal');
+    const $confirmBtn = $('#bl-modal-confirm');
+    const $cancelBtn = $('#bl-modal-cancel');
+    
+    $modal.css('display', 'flex');
+    $confirmBtn.prop('disabled', true).css({ background: '#660000', color: '#aaa', cursor: 'not-allowed' });
+    
+    let timeLeft = 3;
+    $confirmBtn.text(`确认清理 (${timeLeft}s)`);
+    
+    const timer = setInterval(() => {
+        timeLeft--;
+        if (timeLeft > 0) {
+            $confirmBtn.text(`确认清理 (${timeLeft}s)`);
+        } else {
+            clearInterval(timer);
+            $confirmBtn.prop('disabled', false)
+                       .css({ background: '#d32f2f', color: 'white', cursor: 'pointer' })
+                       .text('我已切换，确认清理！');
+            $confirmBtn.hover(function(){ $(this).css('background', '#f44336') }, function(){ $(this).css('background', '#d32f2f') });
+        }
+    }, 1000);
+
+    $cancelBtn.off('click').on('click', () => {
+        clearInterval(timer);
+        $modal.hide();
+    });
+
+    $confirmBtn.off('click').on('click', () => {
+        if (!timeLeft) {
+            clearInterval(timer);
+            $modal.hide();
+            performDeepCleanse();
+        }
+    });
 }
 
 function bindEvents() {
@@ -311,7 +377,7 @@ function bindEvents() {
             isRegexDirty = true; 
             saveSettingsDebounced();
             renderTags();
-            performAutoChatCleanse(); 
+            performGlobalCleanse(); 
         }
     });
 
@@ -322,56 +388,30 @@ function bindEvents() {
         renderTags();
     });
 
-    let timerInterval = null;
     $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
-        $('#bl-purifier-popup').fadeOut(100);
-        $('#bl-warning-overlay, #bl-warning-popup').fadeIn(200);
-
-        let timeLeft = 3;
-        const $btn = $('#bl-warning-confirm');
-        $btn.prop('disabled', true).css({cursor: 'not-allowed', opacity: 0.5}).text(`我已切走预设 (${timeLeft}s)`);
-
-        clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            if (timeLeft > 0) {
-                $btn.text(`我已切换预设 (${timeLeft}s)`);
-            } else {
-                clearInterval(timerInterval);
-                $btn.prop('disabled', false).css({cursor: 'pointer', opacity: 1}).text('我已安全切换，立即清理');
-            }
-        }, 1000);
+        showConfirmModal();
     });
 
-    $(document).off('click', '#bl-warning-cancel, #bl-warning-overlay').on('click', '#bl-warning-cancel, #bl-warning-overlay', (e) => {
-        if(e.target.id === 'bl-warning-overlay' || e.target.id === 'bl-warning-cancel') {
-            clearInterval(timerInterval);
-            $('#bl-warning-overlay, #bl-warning-popup').fadeOut(200);
-        }
-    });
-
-    $(document).off('click', '#bl-warning-confirm').on('click', '#bl-warning-confirm', function() {
-        if (!$(this).prop('disabled')) {
-            $('#bl-warning-overlay, #bl-warning-popup').fadeOut(200);
-            performDeepCleanse(); // 触发仅包含 extension_settings 等的清理
-        }
-    });
-
-    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
+    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
     const visualCleanseOnly = () => {
         const regex = getPurifyRegex();
         if (regex) purifyDOM(document.getElementById('chat'), regex);
     };
 
-    // 生成完毕 / 切换状态时：直接深度洗底层数据
-    const delayedFullCleanse = () => setTimeout(performAutoChatCleanse, 300); 
+    // 2. 深度数据层清洗（延迟 1000ms 确保酒馆写入完成）
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
     
-    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);     
+    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
     
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    // 打字彻底结束后（或被手动停止时）：执行底层物理删除 + 存入文档 + 刷新小铅笔
+    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);     
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);         
+    
+    // 其他常规操作时清理
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
 }
 
 function renderTags() {
@@ -398,7 +438,7 @@ function renderTags() {
 }
 
 /**
- * 自动数据迁移
+ * 自动数据迁移：将旧版的 bannedWords 无损升级为 3.0 的 rules 架构
  */
 function migrateOldData() {
     const settings = extension_settings[extensionName];
@@ -422,6 +462,7 @@ jQuery(() => {
     if (isBooted) return;
     extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
     
+    // 执行数据迁移
     migrateOldData();
     if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
 
@@ -431,7 +472,7 @@ jQuery(() => {
         setupUI();
         bindEvents();
         initRealtimeInterceptor(); 
-        performAutoChatCleanse(); 
+        performGlobalCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
