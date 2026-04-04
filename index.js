@@ -133,18 +133,36 @@ function performGlobalCleanse() {
     const regex = getPurifyRegex();
     if (!regex) return;
     let chatChanged = false;
+    
     if (window.chat && Array.isArray(window.chat)) {
         window.chat.forEach(msg => {
-            if (msg.mes) {
+            // 1. 清理当前显示的主消息
+            if (typeof msg.mes === 'string') {
                 const cleaned = msg.mes.replace(regex, dynamicReplacer);
-                if (msg.mes !== cleaned) { msg.mes = cleaned; chatChanged = true; }
+                if (msg.mes !== cleaned) { 
+                    msg.mes = cleaned; 
+                    chatChanged = true; 
+                }
+            }
+            
+            //清理所有滑动分支(Swipes/小铅笔)的历史记录
+            if (msg.swipes && Array.isArray(msg.swipes)) {
+                for (let i = 0; i < msg.swipes.length; i++) {
+                    if (typeof msg.swipes[i] === 'string') {
+                        const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
+                        if (msg.swipes[i] !== cleanedSwipe) {
+                            msg.swipes[i] = cleanedSwipe;
+                            chatChanged = true;
+                        }
+                    }
+                }
             }
         });
     }
+    
     if (chatChanged) saveChat(); 
     purifyDOM(document.getElementById('chat'), regex);
 }
-
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
     if (!regex) { alert("请先添加屏蔽规则。"); return; }
