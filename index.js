@@ -4,13 +4,13 @@ import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadat
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [] };
 
-// 性能优化：缓存正则与映射字典，避免高频 DOM 变动时重复计算
+// 性能优化：缓存正则与映射字典
 let cachedRegex = null;
 let wordToRuleMap = {};
 let isRegexDirty = true; 
 
 /**
- * 智能分词处理器：剥离引号并按中英符号分割
+ * 智能分词处理器
  */
 function parseInputToWords(text) {
     if (!text) return [];
@@ -32,7 +32,7 @@ function getPurifyRegex() {
         rule.targets.forEach(t => {
             if (t) {
                 allTargets.push(t);
-                wordToRuleMap[t] = rule.replacements; // 将目标词映射到它的替换词数组
+                wordToRuleMap[t] = rule.replacements; 
             }
         });
     });
@@ -40,7 +40,6 @@ function getPurifyRegex() {
     if (!allTargets.length) {
         cachedRegex = null;
     } else {
-        // 按长度倒序排列，防止短词截断长词（如优先匹配“极其”，后匹配“极”）
         const sorted = [...allTargets].sort((a, b) => b.length - a.length);
         const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         cachedRegex = new RegExp(`(${escaped.join('|')})`, 'gmu');
@@ -55,8 +54,8 @@ function getPurifyRegex() {
  */
 function dynamicReplacer(match) {
     const reps = wordToRuleMap[match];
-    if (!reps || reps.length === 0) return ''; // 没有替换词，直接删除
-    const randIndex = Math.floor(Math.random() * reps.length); // 随机抽取
+    if (!reps || reps.length === 0) return ''; 
+    const randIndex = Math.floor(Math.random() * reps.length); 
     return reps[randIndex];
 }
 
@@ -77,7 +76,7 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    // 【唯一保留的白名单】保护本插件自身的规则配置不被误删
+                    // 【唯一保留的白名单】保护本插件自身
                     if (isGlobalSettings && key === extensionName) continue; 
                     const val = current[key];
                     if (typeof val === 'string') {
@@ -132,38 +131,38 @@ function purifyDOM(rootNode, regex) {
 let isCleansing = false; // 防止递归死循环的锁
 
 /**
- * 【日常全自动版】每次聊天/生成结束自动运行的轻量深度清理
- * 只针对当前的对话数组和对话元数据，洗干净了小铅笔自然干净
+ * 【极速轻量版】仅针对刚刚生成的“最新一条消息”进行清理
+ * 在 GENERATION_STOPPED 等事件后调用，不遍历全局，极大降低内存/CPU负担
  */
-async function performAutoChatCleanse() {
+async function cleanseLatestMessage() {
     if (isCleansing) return;
     const regex = getPurifyRegex();
-    if (!regex) return;
+    // 确保有规则，且聊天记录存在
+    if (!regex || !window.chat || window.chat.length === 0) return;
     
     isCleansing = true;
-    let scrubbedItems = 0;
     
-    // 深度清洗当前记录
-    if (window.chat && Array.isArray(window.chat)) {
-        scrubbedItems += safeDeepScrub(window.chat, regex, false);
-    }
-    // 深度清洗当前元数据
-    if (typeof chat_metadata === 'object' && chat_metadata !== null) {
-        scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
+    // 定位最后一条消息
+    const lastIndex = window.chat.length - 1;
+    const lastMsg = window.chat[lastIndex];
+    
+    // 只深度清洗最后一条消息的数据
+    let changes = safeDeepScrub(lastMsg, regex, false);
+    
+    if (changes > 0) {
+        await saveChat(); // 发生改变才保存
+        
+        // 只锁定最后一条消息的 DOM 节点进行视觉更新 (极大地减少页面 Reflow)
+        const lastMesEl = document.querySelector(`.mes[mesid="${lastIndex}"]`) || document.querySelector('.mes:last-child');
+        if (lastMesEl) purifyDOM(lastMesEl, regex);
     }
     
-    if (scrubbedItems > 0) {
-        await saveChat(); // 底层数据变了，存一下盘
-    }
-    
-    // 视觉层清理兜底，保证当前屏幕上的字眼也换掉
-    purifyDOM(document.getElementById('chat'), regex);
     isCleansing = false;
 }
 
 /**
- * 【手动高危版】只留给点击红色的深度清理按钮使用
- * 专门处理预设、系统扩展等其他深层数据，保护隔离
+ * 【全家桶高危版】历史聊天+元数据+系统设置，全部清洗
+ * 专门留给点击红色【深度清理】按钮时使用
  */
 async function performDeepCleanse() {
     const regex = getPurifyRegex();
@@ -171,7 +170,7 @@ async function performDeepCleanse() {
 
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2>正在扫描扩展与系统设置层的数据...</h2>
+            <h2>正在执行全局深度扫描 (包含历史记录与系统设置)...</h2>
         </div>
     `);
     await new Promise(r => setTimeout(r, 100));
@@ -179,19 +178,22 @@ async function performDeepCleanse() {
     try {
         let scrubbedItems = 0;
         
-        // 剥离了 chat，这里只扫描全局高危设置
-        if (typeof extension_settings === 'object' && extension_settings !== null) {
-            scrubbedItems += safeDeepScrub(extension_settings, regex, true);
-        }
+        // 扫全局聊天记录
+        if (window.chat && Array.isArray(window.chat)) scrubbedItems += safeDeepScrub(window.chat, regex, false);
+        // 扫聊天元数据
+        if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
+        // 扫系统设置
+        if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
 
         if (scrubbedItems > 0) {
-            saveSettingsDebounced(); 
+            await saveChat(); // 存聊天
+            saveSettingsDebounced(); // 存设置
             await new Promise(r => setTimeout(r, 2000)); 
-            alert(`设置层清理完成，共处理 ${scrubbedItems} 处匹配项。\n请切回您原来的预设，页面即将刷新。`);
+            alert(`全局清理完成，共处理 ${scrubbedItems} 处匹配项。\n请切回您原来的预设，页面即将刷新。`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未在系统设置中发现需要替换的数据残留。您可以切回预设了。");
+            alert("未发现需要替换的数据残留。您可以切回预设了。");
         }
     } catch (e) {
         $('#bl-loading-overlay').remove();
@@ -200,6 +202,7 @@ async function performDeepCleanse() {
 }
 
 function initRealtimeInterceptor() {
+    // 监听聊天框内容变化的 MutationObserver，保留原样（用于拦截旧消息渲染等突发情况）
     const chatObserver = new MutationObserver((mutations) => {
         const regex = getPurifyRegex();
         if (!regex) return;
@@ -221,6 +224,7 @@ function initRealtimeInterceptor() {
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
+    // 用户手动输入框的实时屏蔽
     document.addEventListener('input', (e) => {
         const regex = getPurifyRegex();
         if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
@@ -267,7 +271,7 @@ function setupUI() {
                 </div>
                 <div id="bl-tags-container" style="margin-top:15px;"></div>
                 <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度清理系统设置 (高危)</button>
+                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">全局深度清理 (高危)</button>
                 </div>
             </div>`);
     }
@@ -277,15 +281,15 @@ function setupUI() {
             <div id="bl-warning-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:9999998; backdrop-filter:blur(2px);"></div>
             <div id="bl-warning-popup" style="display:none; position:fixed; top:25vh; left:50%; transform:translateX(-50%); width:90%; max-width:420px; background:var(--bl-background-popup, #fff); border:2px solid var(--bl-danger-color, #ff4757); border-radius:12px; z-index:9999999; padding:25px; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
                 <h3 style="color:var(--bl-danger-color, #ff4757); margin:0 0 15px 0; font-size:20px; display:flex; align-items:center; gap:8px;">
-                    ⚠️ 系统级深度清理警告！
+                    ⚠️ 全局深度清理警告！
                 </h3>
                 <p style="font-size:15px; color:var(--bl-text-primary, #333); line-height:1.6; margin:0 0 20px 0;">
-                    日常聊天早已自动清洗完毕。此按钮仅用于彻底清理过往扩展设置及底层残存。<br><br>
-                    为了防止误删您的常用预设(Preset)，请在此刻：
+                    日常聊天插件会自动处理最新消息。此按钮将扫描并清洗<strong>所有历史聊天、元数据及扩展预设。</strong><br><br>
+                    为了绝对防止误删您的专属【系统预设(Preset)】，请在此刻：
                     <br><br>
                     👉 <strong style="color:var(--bl-danger-color, #ff4757); background:rgba(255,71,87,0.1); padding:2px 4px; border-radius:4px;">将 ST 当前的系统预设切换至「Default」或任意废弃预设！</strong>
                     <br><br>
-                    <span style="font-size:13px; color:var(--bl-text-secondary, #666);">清理完成后页面会刷新，届时您再切回原预设即可保证预设完整性。</span>
+                    <span style="font-size:13px; color:var(--bl-text-secondary, #666);">清理完成后页面会刷新，届时您再切回原预设即可保证 100% 安全。</span>
                 </p>
                 <div style="display:flex; justify-content:flex-end; gap:12px;">
                     <button id="bl-warning-cancel" style="padding:10px 18px; border-radius:8px; border:1px solid var(--bl-border-color, #ccc); background:transparent; color:var(--bl-text-primary, #333); cursor:pointer; font-weight:bold;">取消清理</button>
@@ -311,7 +315,8 @@ function bindEvents() {
             isRegexDirty = true; 
             saveSettingsDebounced();
             renderTags();
-            performAutoChatCleanse(); 
+            // 添加规则后顺便洗一下最后一条，方便确认效果
+            cleanseLatestMessage(); 
         }
     });
 
@@ -335,7 +340,7 @@ function bindEvents() {
         timerInterval = setInterval(() => {
             timeLeft--;
             if (timeLeft > 0) {
-                $btn.text(`我已切换预设 (${timeLeft}s)`);
+                $btn.text(`我已切走预设 (${timeLeft}s)`);
             } else {
                 clearInterval(timerInterval);
                 $btn.prop('disabled', false).css({cursor: 'pointer', opacity: 1}).text('我已安全切换，立即清理');
@@ -353,25 +358,18 @@ function bindEvents() {
     $(document).off('click', '#bl-warning-confirm').on('click', '#bl-warning-confirm', function() {
         if (!$(this).prop('disabled')) {
             $('#bl-warning-overlay, #bl-warning-popup').fadeOut(200);
-            performDeepCleanse(); // 触发仅包含 extension_settings 等的清理
+            performDeepCleanse(); 
         }
     });
 
-    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
-    const visualCleanseOnly = () => {
-        const regex = getPurifyRegex();
-        if (regex) purifyDOM(document.getElementById('chat'), regex);
-    };
-
-    // 生成完毕 / 切换状态时：直接深度洗底层数据
-    const delayedFullCleanse = () => setTimeout(performAutoChatCleanse, 300); 
+    // 【性能优化核心】：移除了流式打字期间 (MESSAGE_EDITED) 的所有清理操作！
+    // 现在只有在生成停止、收到新消息、或者划出新回复时，才执行针对"单条消息"的极速清洗
+    const delayedLightCleanse = () => setTimeout(cleanseLatestMessage, 300); 
     
-    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);     
-    
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
-    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);     
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);         
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedLightCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedLightCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedLightCleanse);     
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedLightCleanse);         
 }
 
 function renderTags() {
@@ -431,7 +429,7 @@ jQuery(() => {
         setupUI();
         bindEvents();
         initRealtimeInterceptor(); 
-        performAutoChatCleanse(); 
+        cleanseLatestMessage(); // 初始载入时清理一次最新进度
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
