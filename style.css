@@ -188,3 +188,79 @@
     .bl-rule-card { padding: 8px 10px !important; }
     .bl-rule-name { font-size: 13px !important; }
 }
+
+/* ================== 工具栏与按钮重构样式 ================== */
+.bl-icon-btn {
+    padding: 6px 10px !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    background: var(--bl-background-secondary) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    color: var(--bl-text-primary) !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s ease !important;
+}
+.bl-icon-btn:hover {
+    background: var(--bl-border-color) !important;
+    opacity: 0.9 !important;
+}
+
+.bl-tool-btn {
+    flex: 1 1 0% !important; 
+    padding: 8px 0 !important; 
+    border-radius: 6px !important;
+    border: 1px solid var(--bl-border-color) !important;
+    background: var(--bl-background-secondary) !important;
+    color: var(--bl-text-primary) !important;
+    cursor: pointer !important;
+    font-size: 13px !important; 
+    font-weight: 500 !important;
+    text-align: center !important;
+    transition: background 0.2s, opacity 0.2s !important;
+    white-space: nowrap !important; 
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+}
+.bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
+
+/* 主界面单条规则按钮重构 */
+.bl-rule-actions { display: flex !important; gap: 4px !important; align-items: center !important; margin-left:10px !important; }
+.bl-rule-edit, .bl-rule-del, .bl-rule-up, .bl-rule-down {
+    background: var(--bl-background-secondary) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    color: var(--bl-text-secondary) !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s !important;
+    font-size: 13px !important;
+}
+
+.bl-rule-edit:hover, .bl-rule-up:hover, .bl-rule-down:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; color: white !important; }
+.bl-rule-del:hover { background: var(--bl-danger-color) !important; border-color: var(--bl-danger-color) !important; color: white !important; }
+
+/* ================== 折叠态手风琴样式 ================== */
+.bl-subrule-row.collapsed {
+    transition: background 0.2s !important;
+}
+.bl-subrule-row.collapsed:hover {
+    border-color: var(--bl-accent-color) !important;
+}
+.bl-subrule-row.expanded {
+    animation: fadeInSlide 0.2s ease forwards;
+}
+
+@keyframes fadeInSlide {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
