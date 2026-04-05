@@ -9,17 +9,17 @@ let isRegexDirty = true;
 let currentEditingIndex = -1; 
 let currentEditingSubrules = []; 
 
-// 智能分词：正则模式只通过换行符切分，文本模式支持逗号和空格
+// 智能分词：正则和简易模式只通过换行符切分，文本模式支持逗号和空格
 function parseInputToWords(text, mode = 'text') {
     if (!text) return [];
-    if (mode === 'regex') {
+    if (mode === 'regex' || mode === 'simple') {
         return text.split('\n').map(w => w.trim()).filter(w => w);
     }
     const noQuotes = text.replace(/['"‘’”“”]/g, ' ');
     return noQuotes.split(/[\s,，、\n]+/).map(w => w.trim()).filter(w => w);
 }
 
-// 核心重构：双引擎构建
+// 核心重构：三引擎构建 (普通/正则/简易)
 function buildProcessors() {
     if (!isRegexDirty) return activeProcessors;
     const rules = extension_settings[extensionName]?.rules || [];
@@ -43,13 +43,11 @@ function buildProcessors() {
                     }
                 });
             } else if (mode === 'regex') {
-                // 正则模式独立处理，不干扰长词优先逻辑
                 sub.targets.forEach(t => {
                     if (t) {
                         try {
                             let pattern = t;
                             let flags = 'gmu';
-                            // 允许用户直接写 /.../g 或者直接写表达式
                             if (t.startsWith('/')) {
                                 const lastSlash = t.lastIndexOf('/');
                                 if (lastSlash > 0) {
@@ -68,18 +66,42 @@ function buildProcessors() {
                         }
                     }
                 });
+            } else if (mode === 'simple') {
+                // --- 新增：简易积木组合引擎 ---
+                sub.targets.forEach(t => {
+                    if (t) {
+                        try {
+                            // 1. 转义正则基本危险字符，但故意保留我们需要的 { } , * 以及用于可选的 ?
+                            let escaped = t.replace(/[.+^$()[\]\\]/g, '\\$&');
+                            
+                            // 2. 将 {A,B,C} 语法转换为非捕获组 (?:A|B|C)
+                            escaped = escaped.replace(/\{([^}]+)\}/g, (match, group) => {
+                                return '(?:' + group.split(',').map(s => s.trim()).join('|') + ')';
+                            });
+                            
+                            // 3. 将 * 转换为模糊通配，限制最大长度15，防止误杀全段文字
+                            escaped = escaped.replace(/\*/g, '.{0,15}?');
+                            
+                            processors.push({
+                                regex: new RegExp(escaped, 'gmu'),
+                                replacements: sub.replacements,
+                                isRegexMode: true // 复用正则的随机替换机制
+                            });
+                        } catch(e) {
+                            console.warn("[Ultimate Purifier] 简易规则解析失败:", t);
+                        }
+                    }
+                });
             }
         });
     });
 
-    // 处理所有普通文本：保留原版的长词优先合并逻辑
     if (textTargets.length > 0) {
         const uniqueTargets = [...new Set(textTargets)];
         const sorted = uniqueTargets.sort((a, b) => b.length - a.length);
         const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         const textRegex = new RegExp(`(${escaped.join('|')})`, 'gmu');
         
-        // 插入到处理器队列最前面
         processors.unshift({
             regex: textRegex,
             replacerMap: wordToReplacements,
@@ -92,7 +114,6 @@ function buildProcessors() {
     return activeProcessors;
 }
 
-// 统一替换枢纽：支持普通随机替换与正则 $1, $2 捕获组映射
 function applyReplacements(originalText) {
     if (typeof originalText !== 'string' || !originalText) return originalText;
     let text = originalText;
@@ -106,7 +127,6 @@ function applyReplacements(originalText) {
                 const randIndex = Math.floor(Math.random() * reps.length);
                 let rep = reps[randIndex];
                 
-                // 正则模式魔法：支持用户在替换词里写 $1, $2 引用捕获组
                 rep = rep.replace(/\$(\d+)/g, (m, g) => {
                     const idx = parseInt(g);
                     return args[idx - 1] !== undefined ? args[idx - 1] : m;
@@ -511,7 +531,6 @@ function renderTags() {
     $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:13px; padding: 20px 0;">当前无规则，请点击上方按钮新增</div>');
 }
 
-// 采用"预览/编辑"双态渲染的UI刷新函数
 function renderSubrulesToModal() {
     const container = $('#bl-edit-subrules-container');
     container.empty();
@@ -523,15 +542,16 @@ function renderSubrulesToModal() {
     
     currentEditingSubrules.forEach((sub, i) => {
         const mode = sub.mode || 'text';
-        const isEditing = sub.isEditing !== false; // 默认为打开态
+        const isEditing = sub.isEditing !== false; 
 
         if (!isEditing) {
             // -- 折叠摘要态 --
-            const badgeHTML = mode === 'regex' 
-                ? '<span class="bl-badge bl-badge-regex">正则</span>' 
-                : '<span class="bl-badge bl-badge-text">普通</span>';
+            let badgeHTML = '';
+            if (mode === 'regex') badgeHTML = '<span class="bl-badge bl-badge-regex">正则</span>';
+            else if (mode === 'simple') badgeHTML = '<span class="bl-badge bl-badge-simple" style="background:#0984e3; color:white;">简易</span>';
+            else badgeHTML = '<span class="bl-badge bl-badge-text">普通</span>';
             
-            let tPreview = sub.targets.join(mode === 'regex' ? ' | ' : ', ');
+            let tPreview = sub.targets.join(mode === 'text' ? ', ' : ' | ');
             if(tPreview.length > 25) tPreview = tPreview.substring(0, 25) + '...';
             
             let rPreview = sub.replacements.join(', ');
@@ -550,22 +570,28 @@ function renderSubrulesToModal() {
             `);
         } else {
             // -- 展开编辑态 --
-            const tStr = sub.targets.join(mode === 'regex' ? '\n' : ', ');
+            const tStr = sub.targets.join(mode === 'text' ? ', ' : '\n');
             const rStr = sub.replacements.join(mode === 'regex' ? '\n' : ', ');
 
-            const tPlaceholder = mode === 'regex' 
-                ? "正则匹配规则 (每行一条)\n例如：/(宛若|如同)(神明|恶魔)/g" 
-                : "被替换词汇 (逗号/空格分隔)\n例如：嘴角勾起, 并不存在";
-            const rPlaceholder = mode === 'regex'
-                ? "替换后词汇 (每行一条，允许含逗号，可留空删除)\n正则模式支持 $1, $2 捕获组引用"
-                : "替换后词汇 (逗号/空格分隔，留空则直接删除)";
+            let tPlaceholder, rPlaceholder;
+            if (mode === 'regex') {
+                tPlaceholder = "正则匹配规则 (每行一条)\n例如：/(宛若|如同)(神明|恶魔)/g";
+                rPlaceholder = "替换后词汇 (每行一条，允许含逗号，可留空)\n支持 $1, $2 捕获组引用";
+            } else if (mode === 'simple') {
+                tPlaceholder = "简易语法 (每行一条)\n语法：用 {词1,词2} 组合，用 * 通配模糊，用 ? 标记可有可无\n例如：{宛若,如同}{神明,恶魔}{般,一样}?";
+                rPlaceholder = "替换后词汇 (每行一条，支持随机，可留空删除)";
+            } else {
+                tPlaceholder = "被替换词汇 (逗号/空格分隔)\n例如：嘴角勾起, 并不存在";
+                rPlaceholder = "替换后词汇 (逗号/空格分隔，留空则直接删除)";
+            }
 
             container.append(`
                 <div class="bl-subrule-row" style="display:flex; flex-direction:column; gap:8px; padding:12px; background:var(--bl-background-popup); border:1px dashed var(--bl-accent-color); border-radius:8px; position:relative;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <select class="bl-sub-mode bl-input" style="width:auto; padding:6px; font-size:12px;">
-                            <option value="text" ${mode === 'text' ? 'selected' : ''}>文本模式 (长词优先)</option>
-                            <option value="regex" ${mode === 'regex' ? 'selected' : ''}>正则表达式模式</option>
+                            <option value="simple" ${mode === 'simple' ? 'selected' : ''}>🧩 简易组合 (推荐! 支持{}与*号)</option>
+                            <option value="text" ${mode === 'text' ? 'selected' : ''}>📝 普通文本 (长词优先替换)</option>
+                            <option value="regex" ${mode === 'regex' ? 'selected' : ''}>⚙️ 纯正表达式 (专业模式)</option>
                         </select>
                         <div style="display:flex; gap:6px;">
                             <button class="bl-save-subrule-btn bl-icon-btn" data-index="${i}" title="完成并折叠" style="color:var(--bl-accent-color);"><i class="fas fa-check"></i></button>
@@ -590,7 +616,7 @@ function syncSubrulesFromDOM() {
         
         currentEditingSubrules[index].mode = mode;
         currentEditingSubrules[index].targets = parseInputToWords(tStr, mode);
-        currentEditingSubrules[index].replacements = parseInputToWords(rStr, mode === 'regex' ? 'regex' : 'text');
+        currentEditingSubrules[index].replacements = parseInputToWords(rStr, mode === 'text' ? 'text' : 'regex');
     });
 }
 
@@ -602,12 +628,12 @@ function openEditModal(index = -1) {
     if (index === -1) {
         $('#bl-edit-modal-title').html('<i class="fas fa-folder-plus"></i> 新增规则合集');
         $('#bl-edit-name').val('');
-        currentEditingSubrules = [{ targets: [], replacements: [], mode: 'text', isEditing: true }];
+        // 新建时默认使用全新的简易模式
+        currentEditingSubrules = [{ targets: [], replacements: [], mode: 'simple', isEditing: true }];
     } else {
         const rule = settings.rules[index];
         $('#bl-edit-modal-title').html('<i class="fas fa-pen"></i> 编辑规则合集');
         $('#bl-edit-name').val(rule.name || '');
-        // 深度拷贝并赋予默认折叠态
         currentEditingSubrules = JSON.parse(JSON.stringify(rule.subRules || []));
         currentEditingSubrules.forEach(sub => sub.isEditing = false); 
     }
@@ -649,10 +675,9 @@ function bindEvents() {
         renderTags();
     });
 
-    // --- Modal 内子规则交互 ---
     $(document).off('click', '#bl-add-subrule-btn').on('click', '#bl-add-subrule-btn', () => {
         syncSubrulesFromDOM();
-        currentEditingSubrules.push({ targets: [], replacements: [], mode: 'text', isEditing: true });
+        currentEditingSubrules.push({ targets: [], replacements: [], mode: 'simple', isEditing: true });
         renderSubrulesToModal();
         const container = $('#bl-edit-subrules-container');
         container.scrollTop(container[0].scrollHeight);
@@ -670,6 +695,7 @@ function bindEvents() {
         renderSubrulesToModal();
     });
 
+    // 切换模式时立刻刷新以展示对应模式的提示词
     $(document).off('change', '.bl-sub-mode').on('change', '.bl-sub-mode', function() {
         const idx = $(this).closest('.bl-subrule-row').find('.bl-save-subrule-btn').data('index');
         syncSubrulesFromDOM();
@@ -697,7 +723,6 @@ function bindEvents() {
             return;
         }
 
-        // 剔除 UI 状态变量保证存盘干净
         validSubrules.forEach(sub => delete sub.isEditing);
 
         let isEnabled = true;
@@ -728,7 +753,6 @@ function bindEvents() {
         showConfirmModal();
     });
 
-    // 预设相关事件
     $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
         const settings = extension_settings[extensionName];
         const name = $(this).val();
@@ -902,7 +926,6 @@ function migrateOldData() {
                     delete r.replacements;
                 }
                 if (!r.subRules) r.subRules = [];
-                // 保障旧 subRules 带有 mode 属性
                 r.subRules.forEach(sub => { if(!sub.mode) sub.mode = 'text'; });
             });
             
