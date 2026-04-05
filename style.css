@@ -1,715 +1,190 @@
-import { extension_settings } from "../../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, chat } from "../../../../script.js";
+/* --- 屏蔽词汇管理 CSS (重构版：带编辑面板) --- */
 
-const extensionName = "ultimate_purifier";
-const defaultSettings = { rules: [], presets: {}, activePreset: "" };
-
-// 缓存正则与映射字典
-let cachedRegex = null;
-let wordToRuleMap = {};
-let isRegexDirty = true; 
-let currentEditingIndex = -1; 
-
-// 剥离引号并按中英符号分割
-function parseInputToWords(text) {
-    if (!text) return [];
-    const noQuotes = text.replace(/['"‘’”“”]/g, ' ');
-    return noQuotes.split(/[\s,，、\n]+/).map(w => w.trim()).filter(w => w);
+:root {
+    --bl-accent-color: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 0.7));
+    --bl-accent-color-hover: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 1));
+    --bl-danger-color: #ff4757;
+    --bl-background-popup: var(--SmartThemeBlurTintColor, rgba(255, 255, 255, 1)); 
+    --bl-background-secondary: rgba(0, 0, 0, 0.05);
+    --bl-border-color: var(--SmartThemeBorderColor, #dee2e6);
+    --bl-text-primary: var(--SmartThemeBodyColor, #343a40); 
+    --bl-text-secondary: #868e96; 
+    --bl-input-bg: var(--SmartThemeInputBackground, #ffffff); 
 }
 
-// 构建正则及映射字典
-function getPurifyRegex() {
-    if (!isRegexDirty) return cachedRegex;
+#bl-wand-btn { cursor: pointer !important; }
 
-    const rules = extension_settings[extensionName]?.rules || [];
-    wordToRuleMap = {};
-    let allTargets = [];
-
-    rules.forEach(rule => {
-        rule.targets.forEach(t => {
-            if (t) {
-                allTargets.push(t);
-                wordToRuleMap[t] = rule.replacements; 
-            }
-        });
-    });
-
-    if (!allTargets.length) {
-        cachedRegex = null;
-    } else {
-        const sorted = [...allTargets].sort((a, b) => b.length - a.length);
-        const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        cachedRegex = new RegExp(`(${escaped.join('|')})`, 'gmu');
-    }
+#bl-purifier-popup {
+    position: fixed !important;
+    top: 10vh !important; 
+    left: 50% !important;
+    transform: translateX(-50%) !important; 
     
-    isRegexDirty = false;
-    return cachedRegex;
+    width: 90% !important;
+    max-width: 420px !important;
+    max-height: 80vh !important;
+    flex-direction: column !important; /* 维持垂直排版 */
+    
+    background: var(--bl-background-popup) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    border-radius: 12px !important;
+    z-index: 999999 !important;
+    padding: 20px 25px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+    box-sizing: border-box !important;
+    
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
 }
 
-// 抽取替换词
-function dynamicReplacer(match) {
-    const reps = wordToRuleMap[match];
-    if (!reps || reps.length === 0) return ''; 
-    const randIndex = Math.floor(Math.random() * reps.length); 
-    return reps[randIndex];
+#bl-purifier-popup .bl-header {
+    display: flex !important; justify-content: space-between !important; align-items: center !important;
+    padding-bottom: 12px !important; border-bottom: 1px solid var(--bl-border-color) !important; margin: 0 !important;
+}
+#bl-purifier-popup .bl-title { font-size: 18px !important; font-weight: bold !important; margin: 0 !important; color: var(--bl-text-primary) !important; }
+#bl-purifier-popup .bl-close {
+    background: none !important; border: none !important; color: var(--bl-text-secondary) !important;
+    font-size: 28px !important; line-height: 1 !important; cursor: pointer !important; transition: color 0.2s ease !important;
+    padding: 0 !important; margin-left: 10px !important;
+}
+#bl-purifier-popup .bl-close:hover { color: var(--bl-danger-color) !important; }
+
+/* 通用输入框样式 */
+.bl-input, .bl-textarea {
+    width: 100% !important;
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--bl-border-color) !important;
+    background: var(--bl-input-bg) !important;
+    color: var(--bl-text-primary) !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    font-family: inherit !important;
+}
+.bl-textarea { resize: vertical !important; }
+.bl-input:focus, .bl-textarea:focus { border-color: var(--bl-accent-color) !important; }
+
+/* 新增规则按钮 */
+.bl-add-rule-btn {
+    padding: 10px !important;
+    border-radius: 8px !important;
+    border: none !important;
+    background-color: var(--bl-accent-color) !important;
+    color: white !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s !important;
+}
+.bl-add-rule-btn:hover { opacity: 0.8 !important; }
+
+/* 深度屏蔽底部按钮 */
+#bl-purifier-popup .bl-footer {
+    margin-top: auto !important;
+    padding-top: 15px !important;
+    border-top: 1px solid var(--bl-border-color) !important;
+}
+.bl-deep-clean-btn {
+    width: 100% !important;
+    padding: 12px !important;
+    background: var(--bl-danger-color) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    transition: opacity 0.2s !important;
+    display: flex !important; justify-content: center !important; align-items: center !important;
+}
+.bl-deep-clean-btn:hover { opacity: 0.8 !important; }
+
+/* ================== 工具栏样式 ================== */
+.bl-icon-btn {
+    padding: 6px 10px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    background: var(--bl-background-secondary) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    cursor: pointer !important;
+}
+#bl-purifier-popup .bl-tools-bar > div:last-child {
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.bl-tool-btn {
+    flex: 1 1 0% !important; 
+    padding: 8px 0 !important; 
+    border-radius: 6px !important;
+    border: 1px solid var(--bl-border-color) !important;
+    background: var(--bl-background-secondary) !important;
+    color: var(--bl-text-primary) !important;
+    cursor: pointer !important;
+    font-size: 13px !important; 
+    font-weight: 500 !important;
+    text-align: center !important;
+    transition: background 0.2s, opacity 0.2s !important;
+    white-space: nowrap !important; 
+}
+.bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
+
+/* ================== 规则卡片样式 ================== */
+#bl-tags-container::-webkit-scrollbar { width: 6px; }
+#bl-tags-container::-webkit-scrollbar-thumb { background: var(--bl-border-color); border-radius: 3px; }
+
+.bl-rule-card {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    background: var(--bl-input-bg) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    border-radius: 8px !important;
+    margin-bottom: 8px !important;
+    box-sizing: border-box !important;
+    transition: border-color 0.2s !important;
+}
+.bl-rule-card:hover { border-color: var(--bl-accent-color) !important; }
+
+.bl-rule-info { flex: 1 !important; overflow: hidden !important; }
+.bl-rule-name { 
+    font-weight: bold !important; 
+    font-size: 14px !important; 
+    color: var(--bl-text-primary) !important; 
+    margin-bottom: 4px !important; 
+}
+.bl-rule-preview { 
+    font-size: 12px !important; 
+    color: var(--bl-text-secondary) !important; 
+    white-space: nowrap !important; 
+    overflow: hidden !important; 
+    text-overflow: ellipsis !important; 
 }
 
-// 保护区检测
-function isProtectedNode(node) {
-    if (!node || !node.closest) return false;
-    if (node.id === 'send_textarea' || node.classList.contains('edit_textarea')) return true;
-    if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
-    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
-        return true;
-    }
-    return false;
+.bl-rule-actions { display: flex !important; gap: 6px !important; align-items: center !important; margin-left:10px !important; }
+.bl-rule-edit, .bl-rule-del {
+    background: var(--bl-background-secondary) !important;
+    border: 1px solid var(--bl-border-color) !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    padding: 4px 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s !important;
 }
+.bl-rule-edit { font-size: 12px !important; }
+.bl-rule-del { font-size: 16px !important; color: var(--bl-text-secondary) !important; font-weight: bold !important; padding: 2px 8px !important; }
 
-// 递归对象清理
-function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
-    let changes = 0;
-    if (!rootObj || typeof rootObj !== 'object') return changes;
-    const stack = [rootObj];
-    const seen = new Set(); 
+.bl-rule-edit:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; }
+.bl-rule-del:hover { background: var(--bl-danger-color) !important; border-color: var(--bl-danger-color) !important; color: white !important; }
 
-    while (stack.length > 0) {
-        const current = stack.pop();
-        if (seen.has(current)) continue;
-        seen.add(current);
-
-        try {
-            for (let key in current) {
-                if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    if (isGlobalSettings && key === extensionName) continue; 
-                    const val = current[key];
-                    if (typeof val === 'string') {
-                        const cleaned = val.replace(regex, dynamicReplacer);
-                        if (val !== cleaned) {
-                            current[key] = cleaned;
-                            changes++;
-                        }
-                    } else if (val !== null && typeof val === 'object') {
-                        stack.push(val); 
-                    }
-                }
-            }
-        } catch(e) { }
-    }
-    return changes;
+/* --- 手机端微调 --- */
+@media screen and (max-width: 600px) {
+    #bl-purifier-popup { padding: 15px 20px !important; width: 92% !important; top: 12vh !important; }
+    .bl-tool-btn { font-size: 12px !important; padding: 7px 0 !important; }
+    .bl-rule-card { padding: 8px 10px !important; }
+    .bl-rule-name { font-size: 13px !important; }
 }
-
-// DOM清理
-function purifyDOM(rootNode, regex) {
-    if (!rootNode) return;
-    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, null, false);
-    
-    let node;
-    while (node = walker.nextNode()) {
-        const parent = node.parentNode;
-        if (parent && (isProtectedNode(parent) || (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))))) {
-            continue;
-        }
-        
-        const original = node.nodeValue || '';
-        const cleaned = original.replace(regex, dynamicReplacer);
-        if (original !== cleaned) node.nodeValue = cleaned;
-    }
-
-    if (rootNode.nodeType === 1) {
-        let inputs = [];
-        if (rootNode.matches && rootNode.matches('input, textarea')) inputs.push(rootNode);
-        if (rootNode.querySelectorAll) inputs.push(...Array.from(rootNode.querySelectorAll('input, textarea')));
-
-        inputs.forEach(input => {
-            if (isProtectedNode(input) || document.activeElement === input) return;
-            const originalVal = input.value || '';
-            const cleanedVal = originalVal.replace(regex, dynamicReplacer);
-            if (originalVal !== cleanedVal) input.value = cleanedVal;
-        });
-    }
-}
-
-function performGlobalCleanse() {
-    const regex = getPurifyRegex();
-    if (!regex) return;
-    let chatChanged = false;
-    
-    if (chat && Array.isArray(chat)) {
-        chat.forEach((msg, index) => {
-            let msgChanged = false; 
-            
-            if (typeof msg.mes === 'string') {
-                const cleaned = msg.mes.replace(regex, dynamicReplacer);
-                if (msg.mes !== cleaned) { 
-                    msg.mes = cleaned; 
-                    msgChanged = true; 
-                }
-            }
-            
-            if (msg.swipes && Array.isArray(msg.swipes)) {
-                for (let i = 0; i < msg.swipes.length; i++) {
-                    if (typeof msg.swipes[i] === 'string') {
-                        const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
-                        if (msg.swipes[i] !== cleanedSwipe) {
-                            msg.swipes[i] = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
-                        const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
-                        if (msg.swipes[i].mes !== cleanedSwipe) {
-                            msg.swipes[i].mes = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    }
-                }
-            }
-
-            if (msgChanged) {
-                chatChanged = true;
-                try {
-                    if (typeof updateMessageBlock === 'function') {
-                        setTimeout(() => updateMessageBlock(index, chat[index]), 50);
-                    }
-                } catch(e) {}
-            }
-        });
-    }
-    
-    if (chatChanged) {
-        try {
-            if (typeof saveChat === 'function') saveChat();
-        } catch(e) {
-            console.error("[Ultimate Purifier] 存盘失败", e);
-        }
-    }
-    
-    purifyDOM(document.getElementById('chat'), regex);
-}
-
-async function performDeepCleanse() {
-    const regex = getPurifyRegex();
-    if (!regex) { alert("请先添加屏蔽规则。"); return; }
-
-    $('body').append(`
-        <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;">正在执行深度扫描与映射替换...</h2>
-            <p>正在同步数据到磁盘，请稍候。</p>
-        </div>
-    `);
-    await new Promise(r => setTimeout(r, 100));
-
-    try {
-        let scrubbedItems = 0;
-        if (chat && Array.isArray(chat)) scrubbedItems += safeDeepScrub(chat, regex, false);
-        if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, regex, false);
-        if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, regex, true);
-
-        if (scrubbedItems > 0) {
-            const saveChatPromise = saveChat();
-            if (saveChatPromise instanceof Promise) await saveChatPromise;
-            saveSettingsDebounced(); 
-            await new Promise(r => setTimeout(r, 2000)); 
-            $('#bl-loading-overlay').remove();
-            
-            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回常用预设】以恢复工作状态！`);
-            location.reload(); 
-        } else {
-            $('#bl-loading-overlay').remove();
-            alert("未发现需要替换的数据残留。\n\n可以安全地将系统预设切换回您的常用预设了。");
-        }
-    } catch (e) {
-        $('#bl-loading-overlay').remove();
-        alert("清理失败，请查看控制台。");
-    }
-}
-
-function initRealtimeInterceptor() {
-    const chatObserver = new MutationObserver((mutations) => {
-        const regex = getPurifyRegex();
-        if (!regex) return;
-        mutations.forEach(m => {
-            m.addedNodes.forEach(node => {
-                if (node.nodeType === 3 || node.nodeType === 8) { 
-                    if (node.parentNode && isProtectedNode(node.parentNode)) return;
-                    const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
-                    if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
-                } else if (node.nodeType === 1) { 
-                    purifyDOM(node, regex);
-                }
-            });
-            if (m.type === 'characterData') {
-                if (m.target.parentNode && isProtectedNode(m.target.parentNode)) return;
-                const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
-                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
-            }
-        });
-    });
-    
-    const chatEl = document.getElementById('chat');
-    if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
-
-    document.addEventListener('input', (e) => {
-        const regex = getPurifyRegex();
-        if (isProtectedNode(e.target)) return;
-        
-        if (regex && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
-            let val = e.target.value || e.target.innerText;
-            if (val && val.match(regex)) {
-                const cleaned = val.replace(regex, dynamicReplacer);
-                if (e.target.value !== undefined) {
-                    const pos = e.target.selectionStart;
-                    e.target.value = cleaned;
-                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
-                } else { e.target.innerText = cleaned; }
-            }
-        }
-    }, true);
-}
-
-function setupUI() {
-    // 强制清理页面上可能残留的旧版本 UI，防止刷新不彻底造成的重叠
-    $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
-
-    if (!$('#bl-wand-btn').length) {
-        $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="词汇映射管理">
-                <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
-            </div>`);
-    }
-    
-    // 主界面 UI (完全移除了旧的输入框)
-    $('body').append(`
-        <div id="bl-purifier-popup">
-            <div class="bl-header">
-                <h3 class="bl-title">全局屏蔽与映射规则</h3>
-                <button id="bl-close-btn" class="bl-close">&times;</button>
-            </div>
-
-            <div class="bl-tools-bar" style="display:flex; flex-direction:column; gap:8px; margin:10px 0 15px 0; border-bottom:1px solid var(--bl-border-color); padding-bottom:12px;">
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <select id="bl-preset-select" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--bl-border-color); background:var(--bl-input-bg); color:var(--bl-text-primary); outline:none; font-family:inherit;"></select>
-                    <button id="bl-preset-rename" title="重命名" class="bl-icon-btn">✏️</button>
-                    <button id="bl-preset-delete" title="删除" class="bl-icon-btn" style="color:var(--bl-danger-color);">💀</button>
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <button class="bl-tool-btn" id="bl-preset-new">新建</button>
-                    <button class="bl-tool-btn" id="bl-preset-save">保存</button>
-                    <button class="bl-tool-btn" id="bl-preset-import">导入</button>
-                    <button class="bl-tool-btn" id="bl-preset-export">导出</button>
-                </div>
-            </div>
-
-            <button id="bl-open-new-rule-btn" class="bl-add-rule-btn" style="width:100%; margin-bottom:10px;">➕ 新增规则组</button>
-
-            <div id="bl-tags-container" style="max-height:220px; overflow-y:auto; padding-right:5px;"></div>
-            
-            <div class="bl-footer">
-                <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
-            </div>
-        </div>`);
-
-    // 编辑/新增规则专用的模态弹窗
-    $('body').append(`
-        <div id="bl-rule-edit-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
-            <div style="background:var(--bl-background-popup); padding:20px 25px; border-radius:12px; width:90%; max-width:400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color); display:flex; flex-direction:column; gap:12px; box-sizing:border-box;">
-                <h3 id="bl-edit-modal-title" style="margin:0; font-size:18px; color:var(--bl-text-primary);">编辑规则组</h3>
-                
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">规则组名称 (方便识别)</label>
-                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：口癖修正、脏话过滤...">
-                </div>
-                
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">目标词 (必填，逗号/空格分隔)</label>
-                    <textarea id="bl-edit-targets" class="bl-textarea" rows="3" placeholder="例如：苹果, 香蕉"></textarea>
-                </div>
-                
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">替换词 (可选，为空则直接删除)</label>
-                    <textarea id="bl-edit-reps" class="bl-textarea" rows="3" placeholder="例如：水果"></textarea>
-                </div>
-                
-                <div style="display:flex; justify-content:space-between; gap:10px; margin-top:10px;">
-                    <button id="bl-edit-cancel" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); color:var(--bl-text-primary); cursor:pointer; font-weight:bold;">取消</button>
-                    <button id="bl-edit-save" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-accent-color); border:none; color:white; font-weight:bold; cursor:pointer;">保存</button>
-                </div>
-            </div>
-        </div>
-    `);
-
-    // 深度清理警告弹窗
-    $('body').append(`
-        <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
-            <div style="background:var(--bl-background-popup); padding:30px; border-radius:12px; max-width:450px; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color);">
-                <h3 style="color:var(--bl-danger-color); margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
-                <p style="font-size:15px; color:var(--bl-text-primary); line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                    为了防止深度清理修改您的常用预设(Preset)，请在此刻：
-                    <br><br>
-                    👉 <strong style="color:var(--bl-danger-color); background:var(--bl-background-secondary); padding:6px 10px; border-radius:6px; display:inline-block; margin-bottom:10px; border: 1px solid var(--bl-border-color);">将SillyTavern当前的预设切换至「Default」或任意废弃预设！</strong>
-                    <br>
-                    <span style="font-size:13px; color:var(--bl-text-secondary);">清理完成后页面会刷新，届时可切回原预设即可保证预设安全。</span>
-                </p>
-                <div style="display:flex; justify-content:space-between; gap:15px;">
-                    <button id="bl-modal-cancel" style="flex:1; padding:12px; border:1px solid var(--bl-border-color); border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-primary); cursor:pointer; font-weight:bold; transition: opacity 0.2s;">取消返回</button>
-                    <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-secondary); cursor:not-allowed; font-weight:bold; transition: opacity 0.2s; opacity: 0.6;">我已阅读警告，已完成切换预设 (3s)</button>
-                </div>
-            </div>
-        </div>
-    `);
-}
-
-function showConfirmModal() {
-    const $modal = $('#bl-confirm-modal');
-    const $confirmBtn = $('#bl-modal-confirm');
-    const $cancelBtn = $('#bl-modal-cancel');
-    
-    $modal.css('display', 'flex');
-    $confirmBtn.prop('disabled', true).css({ background: '#660000', color: '#aaa', cursor: 'not-allowed' });
-    
-    let timeLeft = 3;
-    $confirmBtn.text(`确认清理 (${timeLeft}s)`);
-    
-    const timer = setInterval(() => {
-        timeLeft--;
-        if (timeLeft > 0) {
-            $confirmBtn.text(`确认清理 (${timeLeft}s)`);
-        } else {
-            clearInterval(timer);
-            $confirmBtn.prop('disabled', false)
-                       .css({ background: '#d32f2f', color: 'white', cursor: 'pointer' })
-                       .text('我已切换，确认清理！');
-            $confirmBtn.hover(function(){ $(this).css('background', '#f44336') }, function(){ $(this).css('background', '#d32f2f') });
-        }
-    }, 1000);
-
-    $cancelBtn.off('click').on('click', () => {
-        clearInterval(timer);
-        $modal.hide();
-    });
-
-    $confirmBtn.off('click').on('click', () => {
-        if (!timeLeft) {
-            clearInterval(timer);
-            $modal.hide();
-            performDeepCleanse();
-        }
-    });
-}
-
-function updateToolbarUI() {
-    const settings = extension_settings[extensionName];
-    const select = $('#bl-preset-select');
-    select.empty();
-    select.append('<option value="">-- 临时规则 (未绑定存档) --</option>');
-    
-    if (settings.presets) {
-        for (let name in settings.presets) {
-            select.append($('<option>', { value: name, text: name }));
-        }
-    }
-    select.val(settings.activePreset || "");
-}
-
-// 核心渲染：将列表折叠显示
-function renderTags() {
-    const rules = extension_settings[extensionName].rules || [];
-    const html = rules.map((r, i) => {
-        const name = r.name || `未命名规则组 ${i + 1}`;
-        let targetPreview = r.targets.join(', ');
-        if (targetPreview.length > 20) targetPreview = targetPreview.substring(0, 20) + '...';
-        
-        return `
-        <div class="bl-rule-card">
-            <div class="bl-rule-info">
-                <div class="bl-rule-name">${name}</div>
-                <div class="bl-rule-preview">过滤: ${targetPreview}</div>
-            </div>
-            <div class="bl-rule-actions">
-                <button class="bl-rule-edit" data-index="${i}" title="编辑">✏️</button>
-                <button class="bl-rule-del" data-index="${i}" title="删除">&times;</button>
-            </div>
-        </div>`;
-    }).join('');
-    
-    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:13px; padding: 20px 0;">当前无规则，请点击上方按钮新增</div>');
-}
-
-// 打开编辑弹窗
-function openEditModal(index = -1) {
-    const settings = extension_settings[extensionName];
-    currentEditingIndex = index;
-    const modal = $('#bl-rule-edit-modal');
-    
-    if (index === -1) {
-        $('#bl-edit-modal-title').text('✨ 新增规则组');
-        $('#bl-edit-name').val('');
-        $('#bl-edit-targets').val('');
-        $('#bl-edit-reps').val('');
-    } else {
-        const rule = settings.rules[index];
-        $('#bl-edit-modal-title').text('✏️ 编辑规则组');
-        $('#bl-edit-name').val(rule.name || '');
-        $('#bl-edit-targets').val(rule.targets.join(', '));
-        $('#bl-edit-reps').val(rule.replacements.join(', '));
-    }
-    modal.css('display', 'flex');
-}
-
-function bindEvents() {
-    $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { updateToolbarUI(); renderTags(); $('#bl-purifier-popup').fadeIn(200); });
-    $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
-    
-    $(document).off('click', '#bl-open-new-rule-btn').on('click', '#bl-open-new-rule-btn', () => openEditModal(-1));
-    
-    $(document).off('click', '.bl-rule-edit').on('click', '.bl-rule-edit', function() {
-        openEditModal($(this).data('index'));
-    });
-    
-    $(document).off('click', '.bl-rule-del').on('click', '.bl-rule-del', function() {
-        extension_settings[extensionName].rules.splice($(this).data('index'), 1);
-        isRegexDirty = true;
-        saveSettingsDebounced();
-        renderTags();
-    });
-
-    $(document).off('click', '#bl-edit-cancel').on('click', '#bl-edit-cancel', () => {
-        $('#bl-rule-edit-modal').hide();
-    });
-
-    $(document).off('click', '#bl-edit-save').on('click', '#bl-edit-save', () => {
-        const nameVal = $('#bl-edit-name').val().trim();
-        const targets = parseInputToWords($('#bl-edit-targets').val());
-        const replacements = parseInputToWords($('#bl-edit-reps').val());
-
-        if (targets.length === 0) {
-            alert("目标词不能为空！");
-            return;
-        }
-
-        const newRule = {
-            name: nameVal || `规则组 ${extension_settings[extensionName].rules.length + 1}`,
-            targets: targets,
-            replacements: replacements
-        };
-
-        if (currentEditingIndex === -1) {
-            extension_settings[extensionName].rules.push(newRule);
-        } else {
-            extension_settings[extensionName].rules[currentEditingIndex] = newRule;
-        }
-
-        isRegexDirty = true; 
-        saveSettingsDebounced();
-        renderTags();
-        performGlobalCleanse();
-        $('#bl-rule-edit-modal').hide();
-    });
-
-    $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
-        showConfirmModal();
-    });
-
-    $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
-        const settings = extension_settings[extensionName];
-        const name = $(this).val();
-        settings.activePreset = name;
-        if (name && settings.presets[name]) {
-            settings.rules = JSON.parse(JSON.stringify(settings.presets[name]));
-        } else {
-            settings.rules = [];
-        }
-        isRegexDirty = true;
-        saveSettingsDebounced();
-        renderTags();
-        performGlobalCleanse();
-    });
-
-    $(document).off('click', '#bl-preset-rename').on('click', '#bl-preset-rename', function() {
-        const settings = extension_settings[extensionName];
-        const oldName = settings.activePreset;
-        if (!oldName) {
-            alert("当前为临时规则，请先新建存档。");
-            return;
-        }
-        const newName = prompt("输入新存档名称：", oldName);
-        if (!newName || newName === oldName) return;
-        if (settings.presets[newName]) {
-            alert("存档名称已存在。");
-            return;
-        }
-        settings.presets[newName] = settings.presets[oldName];
-        delete settings.presets[oldName];
-        settings.activePreset = newName;
-        saveSettingsDebounced();
-        updateToolbarUI();
-    });
-
-    $(document).off('click', '#bl-preset-delete').on('click', '#bl-preset-delete', function() {
-        const settings = extension_settings[extensionName];
-        const name = settings.activePreset;
-        if (!name) return;
-        if (confirm(`确定删除存档 "${name}" 吗？`)) {
-            delete settings.presets[name];
-            settings.activePreset = "";
-            settings.rules = [];
-            isRegexDirty = true;
-            saveSettingsDebounced();
-            renderTags();
-            updateToolbarUI();
-            performGlobalCleanse();
-        }
-    });
-
-    $(document).off('click', '#bl-preset-new').on('click', '#bl-preset-new', function() {
-        const settings = extension_settings[extensionName];
-        const name = prompt("输入新存档名称：");
-        if (!name) return;
-        if (settings.presets[name]) {
-            alert("存档名称已存在。");
-            return;
-        }
-        settings.presets[name] = JSON.parse(JSON.stringify(settings.rules));
-        settings.activePreset = name;
-        saveSettingsDebounced();
-        updateToolbarUI();
-    });
-
-    $(document).off('click', '#bl-preset-save').on('click', '#bl-preset-save', function() {
-        const settings = extension_settings[extensionName];
-        if (!settings.activePreset) {
-            alert("当前为临时规则，请点击“新建”保存为新存档。");
-            return;
-        }
-        settings.presets[settings.activePreset] = JSON.parse(JSON.stringify(settings.rules));
-        saveSettingsDebounced();
-        alert("已保存到存档：" + settings.activePreset);
-    });
-
-    $(document).off('click', '#bl-preset-export').on('click', '#bl-preset-export', function() {
-        const settings = extension_settings[extensionName];
-        const data = JSON.stringify(settings.rules, null, 2);
-        const blob = new Blob([data], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const fileName = (settings.activePreset || "临时规则") + ".json";
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    $(document).off('click', '#bl-preset-import').on('click', '#bl-preset-import', function() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = e => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = event => {
-                try {
-                    const importedRules = JSON.parse(event.target.result);
-                    if (!Array.isArray(importedRules)) throw new Error("格式非数组");
-                    
-                    const defaultName = file.name.replace(/\.json$/i, '');
-                    const newName = prompt("导入成功！\n输入存档名称直接保存，或点击取消仅作为临时规则预览：", defaultName);
-                    
-                    const settings = extension_settings[extensionName];
-                    
-                    importedRules.forEach((r, idx) => {
-                        if (!r.name) r.name = r.targets?.[0] || `未命名规则 ${idx+1}`;
-                    });
-                    
-                    settings.rules = importedRules;
-                    
-                    if (newName) {
-                        settings.presets[newName] = JSON.parse(JSON.stringify(importedRules));
-                        settings.activePreset = newName;
-                    } else {
-                        settings.activePreset = "";
-                    }
-                    
-                    isRegexDirty = true;
-                    saveSettingsDebounced();
-                    renderTags();
-                    updateToolbarUI();
-                    performGlobalCleanse();
-                } catch (err) {
-                    alert("导入失败：检查文件是否为合法规则数组。");
-                }
-            };
-            reader.readAsText(file);
-        };
-        input.click();
-    });
-
-    const visualCleanseOnly = () => {
-        const regex = getPurifyRegex();
-        if (regex) purifyDOM(document.getElementById('chat'), regex);
-    };
-
-    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
-    
-    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
-    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
-    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
-    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
-}
-
-function migrateOldData() {
-    const settings = extension_settings[extensionName];
-    
-    if (settings && settings.bannedWords) {
-        if (settings.bannedWords.length > 0) {
-            settings.rules = settings.rules || [];
-            settings.rules.push({
-                name: "旧版本过滤词",
-                targets: [...settings.bannedWords],
-                replacements: []
-            });
-        }
-        delete settings.bannedWords;
-        isRegexDirty = true;
-    }
-
-    if (settings) {
-        if (!settings.presets) settings.presets = {};
-        if (settings.activePreset === undefined) settings.activePreset = "";
-
-        if (settings.rules && settings.rules.length > 0) {
-            settings.rules.forEach((r, i) => {
-                if (!r.name) r.name = `规则组 ${i+1}`; 
-            });
-            if (Object.keys(settings.presets).length === 0) {
-                settings.presets["默认存档"] = JSON.parse(JSON.stringify(settings.rules));
-                settings.activePreset = "默认存档";
-            }
-        }
-        saveSettingsDebounced();
-    }
-}
-
-let isBooted = false;
-jQuery(() => {
-    if (isBooted) return;
-    extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
-    
-    migrateOldData();
-    if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
-
-    const boot = () => {
-        if (isBooted) return;
-        isBooted = true;
-        setupUI();
-        bindEvents();
-        initRealtimeInterceptor(); 
-        updateToolbarUI();
-        performGlobalCleanse(); 
-    };
-    if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
-        eventSource.on(event_types.APP_READY, boot);
-        if (document.getElementById('send_textarea')) boot();
-    }
-});
