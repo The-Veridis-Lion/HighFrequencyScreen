@@ -296,7 +296,7 @@ async function performDeepCleanse() {
     // 显示清理中的遮罩层
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行全方位深度清理...</h2>
+            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行全方位深度清理 (包含角色卡与世界书)...</h2>
             <p>正在同步数据到磁盘，请稍候。</p>
         </div>
     `);
@@ -314,17 +314,17 @@ async function performDeepCleanse() {
             scrubbedItems += safeDeepScrub(extension_settings, true);
         }
 
-        // 3. 【新增】清理内存中的所有角色卡数据 (Character Cards)
+        // 3. 清理内存中的所有角色卡数据 (Character Cards)
         if (typeof window.characters !== 'undefined' && Array.isArray(window.characters)) {
             scrubbedItems += safeDeepScrub(window.characters, false);
         }
         
-        // 4. 【新增】清理内存中的所有世界书词条 (World Info)
+        // 4. 清理内存中的所有世界书词条 (World Info)
         if (typeof window.world_info !== 'undefined' && window.world_info !== null) {
             scrubbedItems += safeDeepScrub(window.world_info, false);
         }
         
-        // 5. 【新增】清理 User 自身的人设设定 (Persona)
+        // 5. 清理 User 自身的人设设定 (Persona)
         if (typeof window.power_user !== 'undefined' && window.power_user !== null) {
             if (window.power_user.personas) {
                 scrubbedItems += safeDeepScrub(window.power_user.personas, false);
@@ -404,9 +404,6 @@ function initRealtimeInterceptor() {
         }
     }, true);
 }
-    
-    const chatEl = document.getElementById('chat');
-    if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
 function setupUI() {
     $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
