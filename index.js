@@ -314,17 +314,17 @@ async function performDeepCleanse() {
             scrubbedItems += safeDeepScrub(extension_settings, true);
         }
 
-        // 3. 清理内存中的所有角色卡数据 (Character Cards)
+        // 3. 【新增】清理内存中的所有角色卡数据 (Character Cards)
         if (typeof window.characters !== 'undefined' && Array.isArray(window.characters)) {
             scrubbedItems += safeDeepScrub(window.characters, false);
         }
         
-        // 4. 清理内存中的所有世界书词条 (World Info)
+        // 4. 【新增】清理内存中的所有世界书词条 (World Info)
         if (typeof window.world_info !== 'undefined' && window.world_info !== null) {
             scrubbedItems += safeDeepScrub(window.world_info, false);
         }
         
-        // 5. 清理 User 自身的人设设定 (Persona)
+        // 5. 【新增】清理 User 自身的人设设定 (Persona)
         if (typeof window.power_user !== 'undefined' && window.power_user !== null) {
             if (window.power_user.personas) {
                 scrubbedItems += safeDeepScrub(window.power_user.personas, false);
