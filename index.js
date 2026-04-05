@@ -355,23 +355,24 @@ function setupUI() {
         $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
     }
 
-    // 存档    
-    <div class="bl-tools-bar" style="display:flex; justify-content:space-between; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--bl-border-color);">
-    <div style="display:flex; gap:5px; align-items:center;">
-        <select id="bl-preset-select" class="bl-input" style="width:120px; padding:5px;">
-            <option value="">-- 选择存档 --</option>
-        </select>
-        <button id="bl-load-preset-btn" class="bl-add-btn" style="padding: 5px 10px;">读取</button>
-        <button id="bl-save-preset-btn" class="bl-add-btn" style="padding: 5px 10px;">存为新档</button>
-    </div>
+    // 存档
+    $('<div class="bl-tools-bar">
+        <div class="bl-tools-group">
+            <select id="bl-preset-select" class="bl-input">
+                <option value="">-- 选择存档 --</option>
+            </select>
+            <button id="bl-load-preset-btn" class="bl-add-btn">读取</button>
+            <button id="bl-save-preset-btn" class="bl-add-btn">存新档</button>
+        </div>
 
-    <div style="display:flex; gap:5px;">
-        <button id="bl-export-btn" class="bl-add-btn" style="padding: 5px 10px; background-color: #28a745;">导出</button>
-        <button id="bl-import-click-btn" class="bl-add-btn" style="padding: 5px 10px; background-color: #17a2b8;">导入</button>
-        <input type="file" id="bl-file-import" style="display:none;" accept=".json">
-    </div>
-</div>
+        <div class="bl-tools-group">
+            <button id="bl-export-btn" class="bl-add-btn">导出</button>
+            <button id="bl-import-click-btn" class="bl-add-btn">导入</button>
+            <input type="file" id="bl-file-import" style="display:none;" accept=".json">
+        </div>
+    </div>').insertBefore('.bl-rule-builder'); // 建议插在规则输入框的上方
 }
+
 /**
  * 触发带倒计时的确认弹窗
  */
