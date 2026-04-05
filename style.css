@@ -23,7 +23,7 @@
     width: 90% !important;
     max-width: 420px !important;
     max-height: 80vh !important;
-    flex-direction: column !important; /* 维持垂直排版 */
+    flex-direction: column !important; 
     
     background: var(--bl-background-popup) !important;
     border: 1px solid var(--bl-border-color) !important;
@@ -96,19 +96,23 @@
     cursor: pointer !important;
     transition: opacity 0.2s !important;
     display: flex !important; justify-content: center !important; align-items: center !important;
+    gap: 8px !important;
 }
 .bl-deep-clean-btn:hover { opacity: 0.8 !important; }
 
 /* ================== 工具栏样式 ================== */
 .bl-icon-btn {
     padding: 6px 10px !important;
-    font-size: 16px !important;
+    font-size: 14px !important;
     line-height: 1 !important;
     border-radius: 6px !important;
     background: var(--bl-background-secondary) !important;
     border: 1px solid var(--bl-border-color) !important;
     cursor: pointer !important;
+    color: var(--bl-text-primary) !important;
 }
+.bl-icon-btn:hover { background: var(--bl-border-color) !important; }
+
 #bl-purifier-popup .bl-tools-bar > div:last-child {
     width: 100% !important;
     box-sizing: border-box !important;
@@ -130,8 +134,8 @@
 .bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
 
 /* ================== 规则卡片样式 ================== */
-#bl-tags-container::-webkit-scrollbar { width: 6px; }
-#bl-tags-container::-webkit-scrollbar-thumb { background: var(--bl-border-color); border-radius: 3px; }
+#bl-tags-container::-webkit-scrollbar, #bl-edit-subrules-container::-webkit-scrollbar { width: 6px; }
+#bl-tags-container::-webkit-scrollbar-thumb, #bl-edit-subrules-container::-webkit-scrollbar-thumb { background: var(--bl-border-color); border-radius: 3px; }
 
 .bl-rule-card {
     display: flex !important;
@@ -169,17 +173,29 @@
     border: 1px solid var(--bl-border-color) !important;
     border-radius: 6px !important;
     cursor: pointer !important;
-    padding: 4px 8px !important;
+    padding: 6px 8px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     transition: all 0.2s !important;
+    color: var(--bl-text-primary) !important;
 }
 .bl-rule-edit { font-size: 12px !important; }
-.bl-rule-del { font-size: 16px !important; color: var(--bl-text-secondary) !important; font-weight: bold !important; padding: 2px 8px !important; }
+.bl-rule-del { font-size: 14px !important; color: var(--bl-text-secondary) !important;}
 
-.bl-rule-edit:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; }
+.bl-rule-edit:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; color: white !important;}
 .bl-rule-del:hover { background: var(--bl-danger-color) !important; border-color: var(--bl-danger-color) !important; color: white !important; }
+
+/* 徽章样式 */
+.bl-badge {
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    margin-right: 6px !important;
+    font-weight: bold !important;
+}
+.bl-badge-text { background: var(--bl-text-secondary) !important; color: white !important; }
+.bl-badge-regex { background: var(--bl-accent-color) !important; color: white !important; }
 
 /* --- 手机端微调 --- */
 @media screen and (max-width: 600px) {
@@ -187,80 +203,4 @@
     .bl-tool-btn { font-size: 12px !important; padding: 7px 0 !important; }
     .bl-rule-card { padding: 8px 10px !important; }
     .bl-rule-name { font-size: 13px !important; }
-}
-
-/* ================== 工具栏与按钮重构样式 ================== */
-.bl-icon-btn {
-    padding: 6px 10px !important;
-    font-size: 14px !important;
-    line-height: 1 !important;
-    border-radius: 6px !important;
-    background: var(--bl-background-secondary) !important;
-    border: 1px solid var(--bl-border-color) !important;
-    color: var(--bl-text-primary) !important;
-    cursor: pointer !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: all 0.2s ease !important;
-}
-.bl-icon-btn:hover {
-    background: var(--bl-border-color) !important;
-    opacity: 0.9 !important;
-}
-
-.bl-tool-btn {
-    flex: 1 1 0% !important; 
-    padding: 8px 0 !important; 
-    border-radius: 6px !important;
-    border: 1px solid var(--bl-border-color) !important;
-    background: var(--bl-background-secondary) !important;
-    color: var(--bl-text-primary) !important;
-    cursor: pointer !important;
-    font-size: 13px !important; 
-    font-weight: 500 !important;
-    text-align: center !important;
-    transition: background 0.2s, opacity 0.2s !important;
-    white-space: nowrap !important; 
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 6px !important;
-}
-.bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
-
-/* 主界面单条规则按钮重构 */
-.bl-rule-actions { display: flex !important; gap: 4px !important; align-items: center !important; margin-left:10px !important; }
-.bl-rule-edit, .bl-rule-del, .bl-rule-up, .bl-rule-down {
-    background: var(--bl-background-secondary) !important;
-    border: 1px solid var(--bl-border-color) !important;
-    color: var(--bl-text-secondary) !important;
-    border-radius: 6px !important;
-    cursor: pointer !important;
-    width: 28px !important;
-    height: 28px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: all 0.2s !important;
-    font-size: 13px !important;
-}
-
-.bl-rule-edit:hover, .bl-rule-up:hover, .bl-rule-down:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; color: white !important; }
-.bl-rule-del:hover { background: var(--bl-danger-color) !important; border-color: var(--bl-danger-color) !important; color: white !important; }
-
-/* ================== 折叠态手风琴样式 ================== */
-.bl-subrule-row.collapsed {
-    transition: background 0.2s !important;
-}
-.bl-subrule-row.collapsed:hover {
-    border-color: var(--bl-accent-color) !important;
-}
-.bl-subrule-row.expanded {
-    animation: fadeInSlide 0.2s ease forwards;
-}
-
-@keyframes fadeInSlide {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
 }
