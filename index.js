@@ -350,11 +350,8 @@ document.addEventListener('input', (e) => {
     // SillyTavern 扩展通常在 #extensions_settings 内，或者你可以换成你自定义扩展的 ID
     const isExt = !!el.closest('#extensions_settings'); 
 
-    // 【核心拦截】：既不是主输入框，也不是 Extension 输入框 -> 视为系统预设，直接跳过保护
+    // 3. 既不是主输入框，也不是 Extension 输入框 -> 视为系统预设，直接跳过保护
     if (!isMain && !isExt) return;
-
-    // ===== 下面继续执行净化逻辑 =====
-    // 例如：el.value = purifyText(el.value);
 });
 
 function setupUI() {
