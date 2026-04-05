@@ -435,13 +435,28 @@ document.addEventListener('input', (e) => {
 function setupUI() {
     $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
 
-    if (!$('#bl-wand-btn').length) {
-        $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="词汇映射管理">
-                <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
-            </div>`);
+    // 挂载到 ST 官方原生扩展面板中
+    if (!$('#ultimate_purifier_container').length) {
+        const extHtml = `
+        <div id="ultimate_purifier_container" class="extension_settings">
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>🧹 屏蔽词净化助手 (Purifier)</b>
+                    <div class="inline-drawer-icon fa-solid fa-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content" style="padding:10px;">
+                    <p style="font-size:12px; color:var(--SmartThemeBodyColor); opacity:0.8; margin-top:0;">物理切除内存与编辑框屏蔽词，防止 AI 复读。</p>
+                    <div id="bl-wand-btn" class="menu_button" style="display:flex; justify-content:center; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-language fa-fw"></i><span>打开配置面板</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        // prepend 可以让你的插件显示在扩展列表的最上方
+        $('#extensions_settings').prepend(extHtml);
     }
     
+    // 下面继续挂载你的各种弹窗 UI
     $('body').append(`
         <div id="bl-purifier-popup" style="display:none;">
             <div class="bl-header">
