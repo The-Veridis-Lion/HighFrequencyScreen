@@ -355,24 +355,23 @@ function setupUI() {
         $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
     }
 
-    // 存档
+    // 存档界面 (去掉了读取按钮，分为上下两行)
     $(`<div class="bl-tools-bar">
-        <div class="bl-tools-group">
+        <div class="bl-tools-group bl-row-full">
             <select id="bl-preset-select" class="bl-input">
-                <option value="">-- 选择存档 --</option>
+                <option value="">-- 选择预设 (选中即切换) --</option>
             </select>
-            <button id="bl-load-preset-btn" class="bl-add-btn">读取</button>
-            <button id="bl-save-preset-btn" class="bl-add-btn">存新档</button>
         </div>
 
-        <div class="bl-tools-group">
-            <button id="bl-export-btn" class="bl-add-btn">导出</button>
+        <div class="bl-tools-group bl-row-actions">
             <button id="bl-import-click-btn" class="bl-add-btn">导入</button>
+            <button id="bl-export-btn" class="bl-add-btn">导出</button>
+            <button id="bl-save-preset-btn" class="bl-add-btn">存新档</button>
             <input type="file" id="bl-file-import" style="display:none;" accept=".json">
         </div>
     </div>`).insertBefore('.bl-rule-builder'); 
     
-    // 初始化时渲染一下下拉菜单
+    // 初始化时渲染下拉菜单
     renderPresetDropdown();
 }
 
@@ -549,10 +548,12 @@ function bindEvents() {
         if (name) savePreset(name);
     });
 
-    $(document).off('click', '#bl-load-preset-btn').on('click', '#bl-load-preset-btn', () => {
-        const name = $('#bl-preset-select').val();
-        if (name) loadPreset(name);
-        else alert("请先在下拉菜单中选择一个存档");
+    // 下拉菜单选中即自动加载
+    $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
+        const name = $(this).val();
+        if (name) {
+            loadPreset(name);
+        }
     });
 }
 
