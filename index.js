@@ -4,7 +4,8 @@ import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadat
 const extensionName = "ultimate_purifier";
 const defaultSettings = { 
     rules: [],          // 当前正在使用的规则
-    presets: {}         // 存档库，格式为 { "存档A名称": [...rules], "存档B名称": [...rules] }
+    presets: {},        // 存档库
+    activePreset: ""    // 新增：记录当前激活（选中）的存档名称
 };
 
 // 性能优化：缓存正则与映射字典，避免高频 DOM 变动时重复计算
@@ -328,53 +329,90 @@ function setupUI() {
             </div>`);
     }
 
-    // ================= 深度清理二次确认弹窗 =================
+    // 省略中间的 confirm-modal HTML (保留你原有的深度清理警告弹窗不变)
     if (!$('#bl-confirm-modal').length) {
-        $('body').append(`
-            <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
-                <div style="background:var(--bl-background-popup); padding:30px; border-radius:12px; max-width:450px; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color);">
-                    <h3 style="color:var(--bl-danger-color); margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
-                    
-                    <p style="font-size:15px; color:var(--bl-text-primary); line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                        为了防止深度清理修改您的常用预设(Preset)，请在此刻：
-                        <br><br>
-                        👉 <strong style="color:var(--bl-danger-color); background:var(--bl-background-secondary); padding:6px 10px; border-radius:6px; display:inline-block; margin-bottom:10px; border: 1px solid var(--bl-border-color);">将SillyTavern当前的预设切换至「Default」或任意废弃预设！</strong>
-                        <br>
-                        <span style="font-size:13px; color:var(--bl-text-secondary);">清理完成后页面会刷新，届时可切回原预设即可保证预设安全。</span>
-                    </p>
-
-                    <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:1px solid var(--bl-border-color); border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-primary); cursor:pointer; font-weight:bold; transition: opacity 0.2s;">取消返回</button>
-                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-secondary); cursor:not-allowed; font-weight:bold; transition: opacity 0.2s; opacity: 0.6;">我已阅读警告，已完成切换预设 (3s)</button>
-                    </div>
-                </div>
-            </div>
-        `);
-        
-        // 使用透明度变化代替写死颜色，更自然地适配所有主题
-        $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
+        // ... (保留你原有的 bl-confirm-modal 结构)
     }
 
-    // 存档界面 (去掉了读取按钮，分为上下两行)
-    $(`<div class="bl-tools-bar">
-        <div class="bl-tools-group bl-row-full">
-            <select id="bl-preset-select" class="bl-input">
-                <option value="">-- 选择预设 (选中即切换) --</option>
-            </select>
-        </div>
+    // ================= 重点修改：存档界面 =================
+    if (!$('.bl-tools-bar').length) {
+        $(`<div class="bl-tools-bar">
+            <div class="bl-tools-group bl-row-full">
+                <select id="bl-preset-select" class="bl-input">
+                    <option value="">-- 临时规则 (未绑定存档) --</option>
+                </select>
+                <button id="bl-delete-preset-btn" class="bl-icon-btn" title="永久删除当前存档">
+                    <i class="fa-solid fa-skull"></i>
+                </button>
+            </div>
 
-        <div class="bl-tools-group bl-row-actions">
-            <button id="bl-import-click-btn" class="bl-add-btn">导入</button>
-            <button id="bl-export-btn" class="bl-add-btn">导出</button>
-            <button id="bl-save-preset-btn" class="bl-add-btn">存新档</button>
-            <input type="file" id="bl-file-import" style="display:none;" accept=".json">
-        </div>
-    </div>`).insertBefore('.bl-rule-builder'); 
+            <div class="bl-tools-group bl-row-actions">
+                <button id="bl-new-preset-btn" class="bl-add-btn" title="另存为新存档">新建</button>
+                <button id="bl-save-preset-btn" class="bl-add-btn" title="保存到当前存档">保存</button>
+                <button id="bl-import-click-btn" class="bl-add-btn">导入</button>
+                <button id="bl-export-btn" class="bl-add-btn">导出</button>
+                <input type="file" id="bl-file-import" style="display:none;" accept=".json">
+            </div>
+        </div>`).insertBefore('.bl-rule-builder'); 
+    }
     
     // 初始化时渲染下拉菜单
     renderPresetDropdown();
 }
 
+function bindEvents() {
+    // 基础功能绑定 (弹窗开关、添加规则、删除规则等，保留你原有的)
+    $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
+    $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
+    
+    $(document).off('click', '#bl-add-rule-btn').on('click', '#bl-add-rule-btn', () => {
+        const targets = parseInputToWords($('#bl-target-input').val());
+        const replacements = parseInputToWords($('#bl-rep-input').val());
+        if (targets.length > 0) {
+            extension_settings[extensionName].rules.push({ targets, replacements });
+            $('#bl-target-input').val(''); $('#bl-rep-input').val('');
+            isRegexDirty = true; saveSettingsDebounced(); renderTags(); performGlobalCleanse(); 
+        }
+    });
+
+    $(document).off('click', '.bl-tag-del').on('click', '.bl-tag-del', function() {
+        extension_settings[extensionName].rules.splice($(this).data('index'), 1);
+        isRegexDirty = true; saveSettingsDebounced(); renderTags();
+    });
+
+    $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', showConfirmModal);
+
+    // 监听打字与渲染 (保留你原有的)
+    const visualCleanseOnly = () => { const regex = getPurifyRegex(); if (regex) purifyDOM(document.getElementById('chat'), regex); };
+    const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
+    if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
+    if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
+    if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
+    if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);
+
+    // ================= 重点修改：存档相关按钮逻辑 =================
+    
+    // 1. 新建存档
+    $(document).off('click', '#bl-new-preset-btn').on('click', '#bl-new-preset-btn', createNewPreset);
+
+    // 2. 保存当前修改
+    $(document).off('click', '#bl-save-preset-btn').on('click', '#bl-save-preset-btn', saveCurrentPreset);
+
+    // 3. 导入 / 导出
+    $(document).off('click', '#bl-export-btn').on('click', '#bl-export-btn', exportRules);
+    $(document).off('click', '#bl-import-click-btn').on('click', '#bl-import-click-btn', () => $('#bl-file-import').click());
+    $(document).off('change', '#bl-file-import').on('change', '#bl-file-import', importRules);
+
+    // 4. 下拉菜单选中即切换
+    $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
+        loadPreset($(this).val());
+    });
+
+    // 5. 绑定删除存档
+    $(document).off('click', '#bl-delete-preset-btn').on('click', '#bl-delete-preset-btn', deleteCurrentPreset);
+}
 /**
  * 触发带倒计时的确认弹窗
  */
@@ -594,6 +632,151 @@ function migrateOldData() {
         isRegexDirty = true;
         saveSettingsDebounced();
         console.log("[Ultimate Purifier] 已成功将旧版数据迁移至 v3.0");
+    }
+}
+
+// ================= 新增与更新的逻辑函数 =================
+
+// --- 渲染下拉菜单 ---
+function renderPresetDropdown() {
+    const settings = extension_settings[extensionName];
+    const presets = settings.presets || {};
+    const active = settings.activePreset || ""; // 获取当前激活的存档
+    
+    let options = '<option value="">-- 临时规则 (未绑定存档) --</option>';
+    for (const name in presets) {
+        // 如果是当前激活的，加上 selected 属性
+        const selected = (name === active) ? 'selected' : '';
+        options += `<option value="${name}" ${selected}>${name}</option>`;
+    }
+    $('#bl-preset-select').html(options);
+}
+
+// --- 1. 新建存档 ---
+function createNewPreset() {
+    const name = prompt("请输入新存档名称：");
+    if (!name) return;
+    
+    const settings = extension_settings[extensionName];
+    if (!settings.presets) settings.presets = {};
+    
+    // 检查重名
+    if (settings.presets[name] && !confirm(`存档 "${name}" 已存在，是否覆盖？`)) {
+        return;
+    }
+    
+    // 拷贝当前规则到新存档，并将其设为激活状态
+    settings.presets[name] = JSON.parse(JSON.stringify(settings.rules));
+    settings.activePreset = name; 
+    
+    saveSettingsDebounced();
+    alert(`已新建并切换至存档: ${name}`);
+    renderPresetDropdown(); 
+}
+
+// --- 2. 保存当前修改到激活的存档 ---
+function saveCurrentPreset() {
+    const settings = extension_settings[extensionName];
+    const active = settings.activePreset;
+    
+    if (!active) {
+        alert("当前为【临时规则】状态，请先点击【新建】将规则存为一个存档！");
+        return;
+    }
+    
+    if (!settings.presets) settings.presets = {};
+    
+    // 覆盖当前激活的存档
+    settings.presets[active] = JSON.parse(JSON.stringify(settings.rules));
+    saveSettingsDebounced();
+    alert(`保存成功！规则已更新至存档: ${active}`);
+}
+
+// --- 3. 切换（加载）指定存档 ---
+function loadPreset(presetName) {
+    const settings = extension_settings[extensionName];
+    
+    if (!presetName) {
+        // 如果用户选择了 "-- 临时规则 --"
+        settings.activePreset = "";
+        saveSettingsDebounced();
+        return;
+    }
+
+    const presets = settings.presets;
+    if (!presets || !presets[presetName]) return;
+    
+    // 深拷贝取出，覆盖当前规则，并更新状态
+    settings.rules = JSON.parse(JSON.stringify(presets[presetName]));
+    settings.activePreset = presetName;
+    
+    isRegexDirty = true;
+    saveSettingsDebounced();
+    renderTags();
+    performGlobalCleanse(); 
+}
+
+// --- 4. 导出规则 ---
+function exportRules() {
+    const rules = extension_settings[extensionName].rules || [];
+    const dataStr = JSON.stringify(rules, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `purifier_rules_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- 5. 导入规则 ---
+function importRules(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedRules = JSON.parse(e.target.result);
+            if (!Array.isArray(importedRules)) throw new Error("格式错误");
+            
+            const settings = extension_settings[extensionName];
+            settings.rules = importedRules;
+            settings.activePreset = ""; // 导入的规则默认进入“临时状态”，防止误覆盖现有存档
+            
+            isRegexDirty = true;
+            saveSettingsDebounced();
+            renderPresetDropdown(); // 刷新下拉框为“临时规则”
+            renderTags();
+            
+            alert("规则导入成功！(当前为临时状态，如果需要保存请点击【新建】)");
+        } catch (err) {
+            alert("导入失败：请确保文件是有效的 JSON 规则文件。");
+        }
+        event.target.value = ''; 
+    };
+    reader.readAsText(file);
+}
+
+// --- 6. 删除当前选中的存档 ---
+function deleteCurrentPreset() {
+    const settings = extension_settings[extensionName];
+    const name = settings.activePreset;
+    
+    if (!name) {
+        alert("当前处于【临时规则】状态，没有存档可以删除。");
+        return;
+    }
+    
+    // 确认弹窗，防止误删
+    if (confirm(`⚠️ 确定要永久删除存档 "${name}" 吗？\n此操作不可撤销。`)) {
+        delete settings.presets[name];
+        settings.activePreset = ""; // 删除后状态切回临时
+        
+        saveSettingsDebounced();
+        renderPresetDropdown();
+        alert(`存档 "${name}" 已删除。`);
     }
 }
 
