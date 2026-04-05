@@ -287,12 +287,16 @@ function performGlobalCleanse() {
 }
 
 async function performDeepCleanse() {
-    buildProcessors();
-    if (activeProcessors.length === 0) { alert("没有开启的屏蔽规则，无需清理。"); return; }
+    buildProcessors(); // 构建当前的屏蔽规则处理器
+    if (activeProcessors.length === 0) { 
+        alert("没有开启的屏蔽规则，无需清理。"); 
+        return; 
+    }
 
+    // 显示清理中的遮罩层
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行深度扫描与映射替换...</h2>
+            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行全方位深度清理 (包含角色卡与世界书)...</h2>
             <p>正在同步数据到磁盘，请稍候。</p>
         </div>
     `);
@@ -300,24 +304,52 @@ async function performDeepCleanse() {
 
     try {
         let scrubbedItems = 0;
+        
+        // 1. 清理当前聊天记录与元数据
         if (chat && Array.isArray(chat)) scrubbedItems += safeDeepScrub(chat, false);
         if (typeof chat_metadata === 'object' && chat_metadata !== null) scrubbedItems += safeDeepScrub(chat_metadata, false);
-        if (typeof extension_settings === 'object' && extension_settings !== null) scrubbedItems += safeDeepScrub(extension_settings, true);
+        
+        // 2. 清理插件配置 (排除插件自身的屏蔽规则，防止自残)
+        if (typeof extension_settings === 'object' && extension_settings !== null) {
+            scrubbedItems += safeDeepScrub(extension_settings, true);
+        }
 
+        // 3. 清理内存中的所有角色卡数据 (Character Cards)
+        if (typeof window.characters !== 'undefined' && Array.isArray(window.characters)) {
+            scrubbedItems += safeDeepScrub(window.characters, false);
+        }
+        
+        // 4. 清理内存中的所有世界书词条 (World Info)
+        if (typeof window.world_info !== 'undefined' && window.world_info !== null) {
+            scrubbedItems += safeDeepScrub(window.world_info, false);
+        }
+        
+        // 5. 清理 User 自身的人设设定 (Persona)
+        if (typeof window.power_user !== 'undefined' && window.power_user !== null) {
+            if (window.power_user.personas) {
+                scrubbedItems += safeDeepScrub(window.power_user.personas, false);
+            }
+        }
+
+        // 只有在产生实际修改时才触发保存并刷新
         if (scrubbedItems > 0) {
             const saveChatPromise = saveChat();
             if (saveChatPromise instanceof Promise) await saveChatPromise;
-            saveSettingsDebounced(); 
+            
+            saveSettingsDebounced(); // 触发设置保存
+            
+            // 等待 ST 后端同步完成
             await new Promise(r => setTimeout(r, 2000)); 
             $('#bl-loading-overlay').remove();
             
-            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，【请记得在刷新后将系统预设切换回常用预设】以恢复工作状态！`);
+            alert(`清理完成，共处理 ${scrubbedItems} 处匹配项。\n\n页面即将刷新，请在刷新后将系统预设切换回常用预设！`);
             location.reload(); 
         } else {
             $('#bl-loading-overlay').remove();
-            alert("未发现需要替换的数据残留。\n\n可以安全地将系统预设切换回您的常用预设了。");
+            alert("未发现需要替换的数据残留。");
         }
     } catch (e) {
+        console.error("[Ultimate Purifier] 深度清理出错:", e);
         $('#bl-loading-overlay').remove();
         alert("清理失败，请查看控制台。");
     }
