@@ -337,23 +337,25 @@ function initRealtimeInterceptor() {
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
-    document.addEventListener('input', (e) => {
-        buildProcessors();
-        if (isProtectedNode(e.target)) return;
-        
-        if (activeProcessors.length > 0 && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
-            let val = e.target.value || e.target.innerText;
-            const cleaned = applyReplacements(val);
-            if (val !== cleaned) {
-                if (e.target.value !== undefined) {
-                    const pos = e.target.selectionStart;
-                    e.target.value = cleaned;
-                    try { e.target.selectionStart = e.target.selectionEnd = pos; } catch(err){}
-                } else { e.target.innerText = cleaned; }
-            }
-        }
-    }, true);
-}
+document.addEventListener('input', (e) => {
+    const el = e.target;
+    
+    // 只处理输入框元素
+    if (!['TEXTAREA', 'INPUT'].includes(el.tagName)) return;
+
+    // 1. 判断是否为主输入框
+    const isMain = el.id === 'send_textarea';
+    
+    // 2. 判断是否为 Extension 的输入框 
+    // SillyTavern 扩展通常在 #extensions_settings 内，或者你可以换成你自定义扩展的 ID
+    const isExt = !!el.closest('#extensions_settings'); 
+
+    // 【核心拦截】：既不是主输入框，也不是 Extension 输入框 -> 视为系统预设，直接跳过保护
+    if (!isMain && !isExt) return;
+
+    // ===== 下面继续执行净化逻辑 =====
+    // 例如：el.value = purifyText(el.value);
+});
 
 function setupUI() {
     $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
