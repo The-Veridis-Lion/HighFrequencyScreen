@@ -297,36 +297,48 @@
 /* ====================================================
    新增：存档与导入导出工具栏样式
 ==================================================== */
+/* ====================================================
+   新增：存档与导入导出工具栏样式 (精简版两行布局)
+==================================================== */
 .bl-tools-bar {
     display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
+    flex-direction: column !important; /* 强制分两行显示 */
     gap: 10px !important;
-    margin-bottom: 5px !important; 
+    margin-bottom: 10px !important; 
     padding-bottom: 15px !important;
     border-bottom: 1px solid var(--bl-border-color) !important;
-    flex-wrap: wrap !important; /* 允许换行，防止挤压 */
 }
 
 .bl-tools-group {
     display: flex !important;
     gap: 8px !important;
     align-items: center !important;
+    width: 100% !important; /* 撑满整行 */
 }
 
-/* 下拉菜单样式复用 bl-input，但做微调 */
-#bl-preset-select {
-    width: auto !important;
-    min-width: 140px !important;
+/* 第一行：让下拉菜单占满可用空间 */
+.bl-row-full #bl-preset-select {
+    flex: 1 !important; 
+    width: 100% !important;
     padding: 8px 10px !important;
     cursor: pointer !important;
 }
 
-/* 导出/导入按钮的特殊颜色 (覆盖默认的紫色 accent-color) */
-#bl-export-btn { background-color: #2e7d32 !important; } /* 绿色 */
+/* 第二行：让三个按钮均分宽度，更美观 */
+.bl-row-actions {
+    justify-content: space-between !important;
+}
+.bl-row-actions .bl-add-btn {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 8px 0 !important;
+}
+
+/* 导出/导入按钮的特殊颜色保留 */
+#bl-export-btn { background-color: #2e7d32 !important; } 
 #bl-export-btn:hover { opacity: 0.8 !important; }
 
-#bl-import-click-btn { background-color: #0277bd !important; } /* 蓝色 */
+#bl-import-click-btn { background-color: #0277bd !important; } 
 #bl-import-click-btn:hover { opacity: 0.8 !important; }
 
 /* ====================================================
