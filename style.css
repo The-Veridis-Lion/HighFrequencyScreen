@@ -1,4 +1,4 @@
-/* --- 屏蔽词汇管理 CSS (包含深度屏蔽按钮 + 完美移动端适配) --- */
+/* --- 屏蔽词汇管理 CSS --- */
 
 :root {
     --bl-accent-color: var(--SmartThemeQuoteColor, rgba(148, 0, 211, 0.7));
@@ -19,24 +19,20 @@
     top: 10vh !important; 
     left: 50% !important;
     transform: translateX(-50%) !important; 
-    
     width: 90% !important;
     max-width: 420px !important;
     max-height: 80vh !important;
     overflow-y: auto !important; 
-    
     background: var(--bl-background-popup) !important;
     border: 1px solid var(--bl-border-color) !important;
     border-radius: 12px !important;
     z-index: 999999 !important;
     padding: 20px 25px !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
-    
     display: none; 
     flex-direction: column !important;
-    gap: 15px !important; /* 缩小一点间距给底部按钮留空间 */
+    gap: 15px !important;
     box-sizing: border-box !important;
-    
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
     animation: blFadeIn 0.3s ease-out !important;
@@ -59,7 +55,6 @@
 }
 #bl-purifier-popup .bl-close:hover { color: var(--bl-danger-color) !important; }
 
-#bl-purifier-popup .bl-input-group { display: flex !important; gap: 10px !important; width: 100% !important; }
 #bl-purifier-popup .bl-input {
     flex: 1 !important; width: 100% !important; padding: 10px 15px !important; border-radius: 8px !important;
     border: 1px solid var(--bl-border-color) !important; background-color: var(--bl-input-bg) !important;
@@ -81,16 +76,50 @@
 #bl-purifier-popup #bl-tags-container::-webkit-scrollbar { display: none !important; }
 
 #bl-purifier-popup .bl-tag {
-    display: inline-flex !important; align-items: center !important; padding: 6px 12px !important; border-radius: 6px !important;
-    background-color: var(--bl-input-bg) !important; color: var(--bl-text-primary) !important; font-weight: 500 !important;
-    border: 1px solid var(--bl-border-color) !important; font-size: 13px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding: 8px 12px !important;
+    box-sizing: border-box !important;
+    background-color: var(--bl-input-bg) !important; 
+    border-radius: 6px !important;
+    border: 1px solid var(--bl-border-color) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
 }
-#bl-purifier-popup .bl-tag span {
-    margin-left: 8px !important; color: var(--bl-text-secondary) !important; cursor: pointer !important; font-size: 16px !important; font-weight: bold !important; line-height: 1 !important;
-}
-#bl-purifier-popup .bl-tag span:hover { color: var(--bl-danger-color) !important; }
 
-/* --- 恢复底部“深度屏蔽”按钮样式 --- */
+#bl-purifier-popup .bl-tag-layout {
+    display: grid !important;
+    grid-template-columns: 1fr auto 1fr !important; 
+    align-items: center !important;
+    gap: 10px !important;
+    flex: 1 !important;
+    min-width: 0 !important; 
+}
+
+#bl-purifier-popup .bl-tag-scroll-box {
+    overflow-x: auto !important;
+    white-space: nowrap !important; 
+    scrollbar-width: none !important; 
+    font-size: 13px !important;
+}
+#bl-purifier-popup .bl-tag-scroll-box::-webkit-scrollbar { display: none !important; }
+#bl-purifier-popup .bl-tag-left { text-align: right !important; }
+#bl-purifier-popup .bl-tag-right { text-align: left !important; }
+#bl-purifier-popup .bl-tag-arrow { color: var(--bl-text-primary) !important; font-size: 14px !important; user-select: none !important; }
+
+#bl-purifier-popup .bl-tag-del {
+    flex-shrink: 0 !important;
+    margin-left: 12px !important;
+    cursor: pointer !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+    color: var(--bl-text-secondary) !important;
+    line-height: 1 !important;
+    transition: color 0.2s !important;
+}
+#bl-purifier-popup .bl-tag-del:hover { color: var(--bl-danger-color) !important; }
+
 #bl-purifier-popup .bl-footer {
     margin-top: 5px !important;
     padding-top: 15px !important;
@@ -107,84 +136,15 @@
     font-weight: bold !important;
     cursor: pointer !important;
     transition: opacity 0.2s !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    gap: 8px !important;
 }
 #bl-purifier-popup .bl-deep-clean-btn:hover { opacity: 0.8 !important; }
 
-/* --- 手机端微调 (确保按钮不超出屏幕) --- */
-@media screen and (max-width: 600px) {
-    #bl-purifier-popup { 
-        padding: 15px 20px !important; 
-        width: 92% !important; 
-        top: 15vh !important; 
-        transform: translateX(-50%) !important; 
-    }
-    #bl-purifier-popup .bl-input { font-size: 14px !important; padding: 8px 12px !important; }
-    #bl-purifier-popup .bl-add-btn { padding: 8px 14px !important; }
-    #bl-purifier-popup .bl-deep-clean-btn { padding: 10px !important; font-size: 14px !important; }
-}
-
-/* --- 新增：批量添加弹窗样式 --- */
-#bl-batch-popup {
-    position: fixed !important;
-    top: 15vh !important; 
-    left: 50% !important;
-    transform: translateX(-50%) !important; 
-    width: 90% !important;
-    max-width: 420px !important;
-    background: var(--bl-background-popup) !important;
-    border: 1px solid var(--bl-border-color) !important;
-    border-radius: 12px !important;
-    z-index: 9999999 !important; /* 层级略高于主弹窗，确保覆盖 */
-    padding: 20px 25px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
-    display: none; 
-    flex-direction: column !important;
-    box-sizing: border-box !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    animation: blFadeIn 0.3s ease-out !important;
-}
-
-#bl-batch-popup .bl-header {
-    display: flex !important; justify-content: space-between !important; align-items: center !important;
-    padding-bottom: 12px !important; border-bottom: 1px solid var(--bl-border-color) !important; margin: 0 !important;
-}
-#bl-batch-popup .bl-title { font-size: 18px !important; font-weight: bold !important; margin: 0 !important; color: var(--bl-text-primary) !important; }
-#bl-batch-popup .bl-close {
-    background: none !important; border: none !important; color: var(--bl-text-secondary) !important;
-    font-size: 28px !important; line-height: 1 !important; cursor: pointer !important; transition: color 0.2s ease !important;
-    padding: 0 !important; margin-left: 10px !important;
-}
-#bl-batch-popup .bl-close:hover { color: var(--bl-danger-color) !important; }
-
-#bl-batch-textarea {
-    width: 100% !important;
-    padding: 10px 15px !important;
-    border-radius: 8px !important;
-    border: 1px solid var(--bl-border-color) !important;
-    background-color: var(--bl-input-bg) !important;
-    color: var(--bl-text-primary) !important;
-    font-size: 14px !important;
-    box-sizing: border-box !important;
-    outline: none !important;
-    resize: vertical !important;
-    min-height: 120px !important;
-    font-family: inherit !important;
-}
-#bl-batch-textarea:focus { border-color: var(--bl-accent-color) !important; }
-
-/* --- 3.0.0 规则组 UI 适配 --- */
 #bl-purifier-popup .bl-rule-builder {
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
     width: 100% !important;
 }
-
 #bl-purifier-popup .bl-textarea {
     width: 100% !important;
     padding: 10px 12px !important;
@@ -200,117 +160,41 @@
     font-family: inherit !important;
 }
 #bl-purifier-popup .bl-textarea:focus { border-color: var(--bl-accent-color) !important; }
-
-#bl-purifier-popup .bl-rule-arrow {
-    text-align: center !important;
-    color: var(--bl-text-secondary) !important;
-    font-size: 14px !important;
-    line-height: 1 !important;
-}
-
+#bl-purifier-popup .bl-rule-arrow { text-align: center !important; color: var(--bl-text-secondary) !important; font-size: 14px !important; }
 #bl-purifier-popup .bl-add-rule-btn {
-    padding: 10px !important;
-    border-radius: 8px !important;
-    border: none !important;
-    background-color: var(--bl-accent-color) !important;
-    color: white !important;
-    font-weight: bold !important;
-    cursor: pointer !important;
-    transition: opacity 0.2s !important;
-}
-#bl-purifier-popup .bl-add-rule-btn:hover { opacity: 0.8 !important; }
-
-#bl-purifier-popup .bl-tag {
-    display: flex !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-#bl-purifier-popup .bl-tag-content {
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-    flex: 1 !important;
-}
-#bl-purifier-popup .bl-tag-del { margin-left: 10px !important; }
-
-/* --- 3.0.1 标签居中与滑动布局 --- */
-#bl-purifier-popup .bl-tag {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    padding: 8px 12px !important;
-    box-sizing: border-box !important;
-}
-
-#bl-purifier-popup .bl-tag-layout {
-    display: grid !important;
-    grid-template-columns: 1fr auto 1fr !important; /* 核心：1等份 自动 1等份，强制居中 */
-    align-items: center !important;
-    gap: 10px !important;
-    flex: 1 !important;
-    min-width: 0 !important; /* 防止内部文字过长撑破外层 Flex */
-}
-
-#bl-purifier-popup .bl-tag-scroll-box {
-    overflow-x: auto !important;
-    white-space: nowrap !important; /* 强制不换行 */
-    scrollbar-width: none !important; /* Firefox 隐藏滚动条 */
-    -ms-overflow-style: none !important; /* IE 隐藏滚动条 */
-    font-size: 13px !important;
-}
-
-/* Chrome/Safari/Edge 隐藏滚动条，但保留滚动功能 */
-#bl-purifier-popup .bl-tag-scroll-box::-webkit-scrollbar {
-    display: none !important; 
-}
-
-#bl-purifier-popup .bl-tag-left {
-    text-align: right !important; /* 目标词靠右紧贴箭头 */
-}
-
-#bl-purifier-popup .bl-tag-right {
-    text-align: left !important; /* 替换词靠左紧贴箭头 */
-}
-
-#bl-purifier-popup .bl-tag-arrow {
-    color: var(--bl-text-primary) !important;
-    font-size: 14px !important;
-    user-select: none !important;
-}
-
-#bl-purifier-popup .bl-tag-del {
-    flex-shrink: 0 !important;
-    margin-left: 12px !important;
-    cursor: pointer !important;
-    font-size: 20px !important;
-    font-weight: bold !important;
-    color: var(--bl-text-secondary) !important;
-    line-height: 1 !important;
-    transition: color 0.2s !important;
-}
-#bl-purifier-popup .bl-tag-del:hover {
-    color: var(--bl-danger-color) !important;
+    padding: 10px !important; border-radius: 8px !important; border: none !important;
+    background-color: var(--bl-accent-color) !important; color: white !important; font-weight: bold !important; cursor: pointer !important;
 }
 
 /* ====================================================
-   新增：存档与导入导出工具栏样式
+   预设管理工具栏
 ==================================================== */
-/* 第一行：布局调整为 比例分配 */
-.bl-row-full {
+.bl-tools-bar {
+    display: flex !important;
+    flex-direction: column !important; /* 强制上下两行 */
+    gap: 10px !important;
+    margin-bottom: 10px !important; 
+    padding-bottom: 15px !important;
+    border-bottom: 1px solid var(--bl-border-color) !important;
+}
+
+.bl-tools-group {
     display: flex !important;
     gap: 8px !important;
     align-items: center !important;
+    width: 100% !important;
+}
+
+.bl-row-full {
+    justify-content: space-between !important;
 }
 
 #bl-preset-select {
-    flex: 1 !important; /* 下拉框占用剩余所有空间 */
+    flex: 1 !important; 
     padding: 8px 10px !important;
     cursor: pointer !important;
 }
 
-/* 骷髅头删除按钮样式 */
 .bl-icon-btn {
     background: none !important;
     border: 1px solid var(--bl-border-color) !important;
@@ -330,36 +214,19 @@
     background-color: rgba(255, 71, 87, 0.1) !important;
 }
 
-/* 第二行：四个按钮平分空间 */
+.bl-row-actions {
+    justify-content: space-between !important;
+}
 .bl-row-actions .bl-add-btn {
     flex: 1 !important;
     padding: 8px 0 !important;
-    font-size: 13px !important; /* 按钮变多了，稍微缩小一点字号防止挤压 */
+    font-size: 13px !important; 
+    text-align: center !important;
 }
 
-/* 导出/导入按钮的特殊颜色保留 */
 #bl-export-btn { background-color: #2e7d32 !important; } 
-#bl-export-btn:hover { opacity: 0.8 !important; }
-
 #bl-import-click-btn { background-color: #0277bd !important; } 
-#bl-import-click-btn:hover { opacity: 0.8 !important; }
 
-/* ====================================================
-   手机端响应式补充 (屏幕小于 600px 时)
-==================================================== */
 @media screen and (max-width: 600px) {
-    .bl-tools-bar {
-        flex-direction: column !important; /* 手机端改为上下两行排列 */
-        align-items: stretch !important;
-    }
-    .bl-tools-group {
-        justify-content: space-between !important; /* 按钮在行内分散对齐 */
-    }
-    #bl-preset-select {
-        flex: 1 !important; /* 下拉框撑满剩余空间 */
-    }
-    .bl-tools-group .bl-add-btn {
-        flex: 1 !important; /* 手机端让导入导出按钮等宽 */
-        text-align: center !important;
-    }
+    #bl-purifier-popup { padding: 15px 20px !important; width: 92% !important; top: 15vh !important; }
 }
