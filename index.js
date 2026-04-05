@@ -498,10 +498,36 @@ function renderTags() {
     const html = rules.map((r, i) => {
         const name = r.name || `未命名合集 ${i + 1}`;
         
-        const allTargets = (r.subRules || []).flatMap(s => s.targets);
-        let targetPreview = allTargets.join(', ');
-        if (targetPreview.length > 20) targetPreview = targetPreview.substring(0, 20) + '...';
-        if (targetPreview.length === 0) targetPreview = "无有效规则";
+        let subRulesHtml = '';
+        const maxPreview = 3; // 主界面最多预览前3条规则，避免卡片太长
+        
+        (r.subRules || []).slice(0, maxPreview).forEach(sub => {
+            const mode = sub.mode || 'text';
+            let badgeHTML = '';
+            // 匹配三种模式的徽章
+            if (mode === 'regex') badgeHTML = '<span class="bl-badge bl-badge-regex" style="font-size:9px; padding:2px 4px;">正则</span>';
+            else if (mode === 'simple') badgeHTML = '<span class="bl-badge bl-badge-simple" style="background:#0984e3; color:white; font-size:9px; padding:2px 4px;">简易</span>';
+            else badgeHTML = '<span class="bl-badge bl-badge-text" style="font-size:9px; padding:2px 4px;">普通</span>';
+            
+            let tPreview = sub.targets.join(mode === 'text' ? ', ' : ' | ');
+            let rPreview = sub.replacements.join(', ');
+            if(!rPreview) rPreview = '【直接删除】';
+            
+            // 组装结构化的预览行： [徽章] 原词 -> 替换词
+            subRulesHtml += `
+            <div style="display:flex; align-items:center; margin-bottom:5px; overflow:hidden; white-space:nowrap;">
+                ${badgeHTML} 
+                <b style="color:var(--bl-text-primary); margin-right:4px; overflow:hidden; text-overflow:ellipsis; max-width:55%;">${tPreview}</b> 
+                <i class="fas fa-arrow-right" style="font-size:10px; margin:0 6px; opacity:0.6; flex-shrink:0;"></i> 
+                <span style="overflow:hidden; text-overflow:ellipsis; flex:1;">${rPreview}</span>
+            </div>`;
+        });
+        
+        // 如果规则太多，显示省略提示
+        if ((r.subRules || []).length > maxPreview) {
+             subRulesHtml += `<div style="font-size:11px; margin-top:6px; color:var(--bl-text-secondary); opacity:0.8; text-align:center;">... 以及其他 ${(r.subRules||[]).length - maxPreview} 组映射</div>`;
+        }
+        if (!subRulesHtml) subRulesHtml = '<div style="font-size:12px; color:var(--bl-text-secondary);">无有效映射规则</div>';
         
         const isEnabled = r.enabled !== false; 
         const checkedAttr = isEnabled ? 'checked' : '';
@@ -509,21 +535,23 @@ function renderTags() {
 
         return `
         <div class="${cardClass}">
-            <div style="display:flex; align-items:center; gap:8px; overflow:hidden; flex:1;">
-                <label class="bl-toggle-switch" title="启用/禁用此合集">
-                    <input type="checkbox" class="bl-rule-toggle" data-index="${i}" ${checkedAttr}>
-                    <span class="bl-toggle-slider"></span>
-                </label>
-                
-                <div class="bl-rule-info">
-                    <div class="bl-rule-name">${name} <span style="font-size:11px; font-weight:normal; opacity:0.7;">(含 ${(r.subRules||[]).length} 组映射)</span></div>
-                    <div class="bl-rule-preview">过滤: ${targetPreview}</div>
+            <div class="bl-rule-card-header">
+                <div style="display:flex; align-items:center; gap:8px; flex:1; overflow:hidden;">
+                    <label class="bl-toggle-switch" title="启用/禁用此合集" style="flex-shrink:0;">
+                        <input type="checkbox" class="bl-rule-toggle" data-index="${i}" ${checkedAttr}>
+                        <span class="bl-toggle-slider"></span>
+                    </label>
+                    <div class="bl-rule-name" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        ${name} <span style="font-size:11px; font-weight:normal; opacity:0.7;">(${(r.subRules||[]).length}组)</span>
+                    </div>
+                </div>
+                <div class="bl-rule-actions" style="flex-shrink:0;">
+                    <button class="bl-rule-edit" data-index="${i}" title="编辑合集"><i class="fas fa-pen"></i></button>
+                    <button class="bl-rule-del" data-index="${i}" title="删除合集"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
-            
-            <div class="bl-rule-actions">
-                <button class="bl-rule-edit" data-index="${i}" title="编辑合集"><i class="fas fa-pen"></i></button>
-                <button class="bl-rule-del" data-index="${i}" title="删除合集"><i class="fas fa-trash"></i></button>
+            <div class="bl-rule-preview">
+                ${subRulesHtml}
             </div>
         </div>`;
     }).join('');
