@@ -146,21 +146,13 @@ function applyReplacements(originalText) {
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
     
-    // 1. 保护插件自身的弹窗，防止自己误删自己的规则
+    // 1. 保护插件自身的弹窗，防止误删规则
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
-
-    // 这些是 ST 中系统预设、越狱提示词、作者备注等核心 Prompt 的输入框 ID
-    const promptIds = [
-        'system_prompt', 'post_history_prompt', 'floating_prompt', 
-        'nsfw_prompt', 'author_note', 'jailbreak_prompt',
-        'chat_completions_system_prompt', 'chat_completions_jailbreak_prompt'
-    ];
-    if (node.id && promptIds.includes(node.id)) return true;
-    
-    // 保护“高级格式化”面板和“API设置”面板（绝大多数系统预设都在这两个面板里）
-    if (node.closest('#advanced_formatting, #api_settings')) return true;
-
-    // 除此之外不予保护
+    // 2. 保护酒馆的非聊天区域的实时打字体验！
+    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
+        return true;
+    }
+    // 只有真正在聊天主界面气泡里的内容，才会被实时净化
     return false;
 }
 
