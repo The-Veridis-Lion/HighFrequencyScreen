@@ -145,11 +145,22 @@ function applyReplacements(originalText) {
 
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
-    if (node.classList.contains('edit_textarea')) return true; 
+    
+    // 1. 保护插件自身的弹窗，防止自己误删自己的规则
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
-    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
-        return true;
-    }
+
+    // 这些是 ST 中系统预设、越狱提示词、作者备注等核心 Prompt 的输入框 ID
+    const promptIds = [
+        'system_prompt', 'post_history_prompt', 'floating_prompt', 
+        'nsfw_prompt', 'author_note', 'jailbreak_prompt',
+        'chat_completions_system_prompt', 'chat_completions_jailbreak_prompt'
+    ];
+    if (node.id && promptIds.includes(node.id)) return true;
+    
+    // 保护“高级格式化”面板和“API设置”面板（绝大多数系统预设都在这两个面板里）
+    if (node.closest('#advanced_formatting, #api_settings')) return true;
+
+    // 除此之外不予保护
     return false;
 }
 
@@ -343,16 +354,23 @@ document.addEventListener('input', (e) => {
     // 只处理输入框元素
     if (!['TEXTAREA', 'INPUT'].includes(el.tagName)) return;
 
-    // 1. 判断是否为主输入框
-    const isMain = el.id === 'send_textarea';
-    
-    // 2. 判断是否为 Extension 的输入框 
-    // SillyTavern 扩展通常在 #extensions_settings 内，或者你可以换成你自定义扩展的 ID
-    const isExt = !!el.closest('#extensions_settings'); 
+    // 1. 判断是否处于“预设/Prompt”保护区
+    if (isProtectedNode(el)) return;
 
-    // 3. 既不是主输入框，也不是 Extension 输入框 -> 视为系统预设，直接跳过保护
-    if (!isMain && !isExt) return;
-});
+    // 2. 角色卡、User、主聊天框等全部执行净化！
+    buildProcessors();
+    if (activeProcessors.length === 0) return;
+
+    const originalVal = el.value || '';
+    const cleanedVal = applyReplacements(originalVal);
+    
+    if (originalVal !== cleanedVal) {
+        // 记录一下光标位置，防止净化瞬间光标跳到最后面
+        const start = el.selectionStart;
+        el.value = cleanedVal;
+        try { el.setSelectionRange(start, start); } catch(err){}
+    }
+}, true);
 
 function setupUI() {
     $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
