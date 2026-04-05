@@ -2,7 +2,10 @@ import { extension_settings } from "../../../extensions.js";
 import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadata, chat } from "../../../../script.js";
 
 const extensionName = "ultimate_purifier";
-const defaultSettings = { rules: [] };
+const defaultSettings = { 
+    rules: [],          // 当前正在使用的规则
+    presets: {}         // 存档库，格式为 { "存档A名称": [...rules], "存档B名称": [...rules] }
+};
 
 // 性能优化：缓存正则与映射字典，避免高频 DOM 变动时重复计算
 let cachedRegex = null;
@@ -351,6 +354,23 @@ function setupUI() {
         // 使用透明度变化代替写死颜色，更自然地适配所有主题
         $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
     }
+
+    // 存档    
+    <div class="bl-tools-bar" style="display:flex; justify-content:space-between; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--bl-border-color);">
+    <div style="display:flex; gap:5px; align-items:center;">
+        <select id="bl-preset-select" class="bl-input" style="width:120px; padding:5px;">
+            <option value="">-- 选择存档 --</option>
+        </select>
+        <button id="bl-load-preset-btn" class="bl-add-btn" style="padding: 5px 10px;">读取</button>
+        <button id="bl-save-preset-btn" class="bl-add-btn" style="padding: 5px 10px;">存为新档</button>
+    </div>
+
+    <div style="display:flex; gap:5px;">
+        <button id="bl-export-btn" class="bl-add-btn" style="padding: 5px 10px; background-color: #28a745;">导出</button>
+        <button id="bl-import-click-btn" class="bl-add-btn" style="padding: 5px 10px; background-color: #17a2b8;">导入</button>
+        <input type="file" id="bl-file-import" style="display:none;" accept=".json">
+    </div>
+</div>
 }
 /**
  * 触发带倒计时的确认弹窗
@@ -442,7 +462,36 @@ function bindEvents() {
     // 其他常规操作时清理
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);
+
+    // 绑定导出
+    $(document).off('click', '#bl-export-btn').on('click', '#bl-export-btn', exportRules);
+
+    // 绑定导入（点击按钮触发隐藏的 input）
+    $(document).off('click', '#bl-import-click-btn').on('click', '#bl-import-click-btn', () => $('#bl-file-import').click());
+    $(document).off('change', '#bl-file-import').on('change', '#bl-file-import', importRules);
+
+    // 绑定保存存档
+    $(document).off('click', '#bl-save-preset-btn').on('click', '#bl-save-preset-btn', () => {
+        const name = prompt("请输入新存档名称：");
+        if (name) savePreset(name);
+    });
+
+    // 绑定读取存档
+    $(document).off('click', '#bl-load-preset-btn').on('click', '#bl-load-preset-btn', () => {
+        const name = $('#bl-preset-select').val();
+        if (name) loadPreset(name);
+    });
+
+    // 补充一个渲染下拉菜单的函数
+    function renderPresetDropdown() {
+        const presets = extension_settings[extensionName].presets || {};
+        let options = '<option value="">-- 选择存档 --</option>';
+        for (const name in presets) {
+            options += `<option value="${name}">${name}</option>`;
+        }
+        $('#bl-preset-select').html(options);
+    }
 }
 
 function renderTags() {
@@ -509,4 +558,88 @@ jQuery(() => {
         eventSource.on(event_types.APP_READY, boot);
         if (document.getElementById('send_textarea')) boot();
     }
+
+    // --- 导出当前规则 ---
+function exportRules() {
+    const rules = extension_settings[extensionName].rules || [];
+    const dataStr = JSON.stringify(rules, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `purifier_rules_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- 导入规则 ---
+function importRules(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedRules = JSON.parse(e.target.result);
+            if (!Array.isArray(importedRules)) throw new Error("格式错误");
+            
+            // 覆盖当前规则
+            extension_settings[extensionName].rules = importedRules;
+            
+            // 触发系统更新
+            isRegexDirty = true;
+            saveSettingsDebounced();
+            renderTags();
+            
+            alert("规则导入成功！");
+        } catch (err) {
+            alert("导入失败：请确保文件是有效的 JSON 规则文件。");
+        }
+        // 清空 input，允许重复导入同一个文件
+        event.target.value = ''; 
+    };
+    reader.readAsText(file);
+}
+
+// --- 保存当前规则为新存档 ---
+function savePreset(presetName) {
+    if (!presetName) return;
+    
+    // 初始化 presets 对象（兼容老用户）
+    if (!extension_settings[extensionName].presets) {
+        extension_settings[extensionName].presets = {};
+    }
+    
+    // 深拷贝当前规则存入
+    const currentRules = JSON.parse(JSON.stringify(extension_settings[extensionName].rules));
+    extension_settings[extensionName].presets[presetName] = currentRules;
+    
+    saveSettingsDebounced();
+    alert(`已保存为存档: ${presetName}`);
+    renderPresetDropdown(); // 更新 UI 的下拉菜单
+}
+
+// --- 切换（加载）指定存档 ---
+function loadPreset(presetName) {
+    const presets = extension_settings[extensionName].presets;
+    if (!presets || !presets[presetName]) return;
+    
+    // 深拷贝取出，覆盖当前规则
+    extension_settings[extensionName].rules = JSON.parse(JSON.stringify(presets[presetName]));
+    
+    isRegexDirty = true;
+    saveSettingsDebounced();
+    renderTags();
+    performGlobalCleanse(); // 切换后立刻清理当前屏幕
+}
+
+// --- 删除存档 ---
+function deletePreset(presetName) {
+    if (extension_settings[extensionName].presets && extension_settings[extensionName].presets[presetName]) {
+        delete extension_settings[extensionName].presets[presetName];
+        saveSettingsDebounced();
+        renderPresetDropdown();
+    }
+}
 });
