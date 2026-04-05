@@ -416,6 +416,9 @@ function bindEvents() {
 
     // 5. 绑定删除存档
     $(document).off('click', '#bl-delete-preset-btn').on('click', '#bl-delete-preset-btn', deleteCurrentPreset);
+
+    // 6. 绑定重命名存档
+    $(document).off('click', '#bl-rename-preset-btn').on('click', '#bl-rename-preset-btn', renameCurrentPreset);
 }
 /**
  * 触发带倒计时的确认弹窗
