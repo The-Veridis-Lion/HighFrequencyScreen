@@ -380,6 +380,34 @@ function initRealtimeInterceptor() {
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
 
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        
+        // 只处理输入框元素
+        if (!['TEXTAREA', 'INPUT'].includes(el.tagName)) return;
+
+        // 1. 判断是否处于“预设/Prompt”保护区
+        if (isProtectedNode(el)) return;
+
+        // 2. 角色卡、User、主聊天框等全部执行净化！
+        buildProcessors();
+        if (activeProcessors.length === 0) return;
+
+        const originalVal = el.value || '';
+        const cleanedVal = applyReplacements(originalVal);
+        
+        if (originalVal !== cleanedVal) {
+            // 记录一下光标位置，防止净化瞬间光标跳到最后面
+            const start = el.selectionStart;
+            el.value = cleanedVal;
+            try { el.setSelectionRange(start, start); } catch(err){}
+        }
+    }, true);
+}
+    
+    const chatEl = document.getElementById('chat');
+    if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
+
 document.addEventListener('input', (e) => {
     const el = e.target;
     
