@@ -312,7 +312,7 @@ function setupUI() {
                 
                 <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px; flex-shrink:0;">
                     <label style="font-size:13px; color:var(--bl-text-secondary);">规则组合集名称</label>
-                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：霸总与强制情态清除">
+                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：程度副词与认知失能净化">
                 </div>
                 
                 <label style="font-size:13px; color:var(--bl-text-secondary); margin-bottom:6px; flex-shrink:0;">子规则列表 (可包含无限多对映射)</label>
