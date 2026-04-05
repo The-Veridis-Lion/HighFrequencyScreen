@@ -296,7 +296,7 @@ async function performDeepCleanse() {
     // 显示清理中的遮罩层
     $('body').append(`
         <div id="bl-loading-overlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;backdrop-filter:blur(5px);">
-            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行全方位深度清理 (包含角色卡与世界书)...</h2>
+            <h2 style="margin-bottom:20px;font-size:20px;"><i class="fas fa-spinner fa-spin"></i> 正在执行全方位深度清理...</h2>
             <p>正在同步数据到磁盘，请稍候。</p>
         </div>
     `);
@@ -403,6 +403,7 @@ function initRealtimeInterceptor() {
             try { el.setSelectionRange(start, start); } catch(err){}
         }
     }, true);
+}
     
     const chatEl = document.getElementById('chat');
     if (chatEl) chatObserver.observe(chatEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['value'] });
