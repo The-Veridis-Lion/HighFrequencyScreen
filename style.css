@@ -297,41 +297,44 @@
 /* ====================================================
    新增：存档与导入导出工具栏样式
 ==================================================== */
-/* ====================================================
-   新增：存档与导入导出工具栏样式 (精简版两行布局)
-==================================================== */
-.bl-tools-bar {
-    display: flex !important;
-    flex-direction: column !important; /* 强制分两行显示 */
-    gap: 10px !important;
-    margin-bottom: 10px !important; 
-    padding-bottom: 15px !important;
-    border-bottom: 1px solid var(--bl-border-color) !important;
-}
-
-.bl-tools-group {
+/* 第一行：布局调整为 比例分配 */
+.bl-row-full {
     display: flex !important;
     gap: 8px !important;
     align-items: center !important;
-    width: 100% !important; /* 撑满整行 */
 }
 
-/* 第一行：让下拉菜单占满可用空间 */
-.bl-row-full #bl-preset-select {
-    flex: 1 !important; 
-    width: 100% !important;
+#bl-preset-select {
+    flex: 1 !important; /* 下拉框占用剩余所有空间 */
     padding: 8px 10px !important;
     cursor: pointer !important;
 }
 
-/* 第二行：让三个按钮均分宽度，更美观 */
-.bl-row-actions {
-    justify-content: space-between !important;
+/* 骷髅头删除按钮样式 */
+.bl-icon-btn {
+    background: none !important;
+    border: 1px solid var(--bl-border-color) !important;
+    color: var(--bl-text-secondary) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
+
+.bl-icon-btn:hover {
+    color: var(--bl-danger-color) !important;
+    border-color: var(--bl-danger-color) !important;
+    background-color: rgba(255, 71, 87, 0.1) !important;
+}
+
+/* 第二行：四个按钮平分空间 */
 .bl-row-actions .bl-add-btn {
     flex: 1 !important;
-    text-align: center !important;
     padding: 8px 0 !important;
+    font-size: 13px !important; /* 按钮变多了，稍微缩小一点字号防止挤压 */
 }
 
 /* 导出/导入按钮的特殊颜色保留 */
