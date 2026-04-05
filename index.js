@@ -356,7 +356,7 @@ function setupUI() {
     }
 
     // 存档
-    $('<div class="bl-tools-bar">
+    $(`<div class="bl-tools-bar">
         <div class="bl-tools-group">
             <select id="bl-preset-select" class="bl-input">
                 <option value="">-- 选择存档 --</option>
@@ -370,7 +370,10 @@ function setupUI() {
             <button id="bl-import-click-btn" class="bl-add-btn">导入</button>
             <input type="file" id="bl-file-import" style="display:none;" accept=".json">
         </div>
-    </div>').insertBefore('.bl-rule-builder'); // 建议插在规则输入框的上方
+    </div>`).insertBefore('.bl-rule-builder'); 
+    
+    // 初始化时渲染一下下拉菜单
+    renderPresetDropdown();
 }
 
 /**
@@ -414,6 +417,84 @@ function showConfirmModal() {
     });
 }
 
+// ================= 新增的功能函数 (移到外层全局作用域) =================
+
+// --- 渲染下拉菜单 ---
+function renderPresetDropdown() {
+    const presets = extension_settings[extensionName].presets || {};
+    let options = '<option value="">-- 选择存档 --</option>';
+    for (const name in presets) {
+        options += `<option value="${name}">${name}</option>`;
+    }
+    $('#bl-preset-select').html(options);
+}
+
+// --- 导出当前规则 ---
+function exportRules() {
+    const rules = extension_settings[extensionName].rules || [];
+    const dataStr = JSON.stringify(rules, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `purifier_rules_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- 导入规则 ---
+function importRules(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedRules = JSON.parse(e.target.result);
+            if (!Array.isArray(importedRules)) throw new Error("格式错误");
+            
+            extension_settings[extensionName].rules = importedRules;
+            isRegexDirty = true;
+            saveSettingsDebounced();
+            renderTags();
+            
+            alert("规则导入成功！");
+        } catch (err) {
+            alert("导入失败：请确保文件是有效的 JSON 规则文件。");
+        }
+        event.target.value = ''; 
+    };
+    reader.readAsText(file);
+}
+
+// --- 保存当前规则为新存档 ---
+function savePreset(presetName) {
+    if (!presetName) return;
+    if (!extension_settings[extensionName].presets) {
+        extension_settings[extensionName].presets = {};
+    }
+    const currentRules = JSON.parse(JSON.stringify(extension_settings[extensionName].rules));
+    extension_settings[extensionName].presets[presetName] = currentRules;
+    
+    saveSettingsDebounced();
+    alert(`已保存为存档: ${presetName}`);
+    renderPresetDropdown(); 
+}
+
+// --- 切换（加载）指定存档 ---
+function loadPreset(presetName) {
+    const presets = extension_settings[extensionName].presets;
+    if (!presets || !presets[presetName]) return;
+    
+    extension_settings[extensionName].rules = JSON.parse(JSON.stringify(presets[presetName]));
+    isRegexDirty = true;
+    saveSettingsDebounced();
+    renderTags();
+    performGlobalCleanse(); 
+}
+
+// ================= 绑定事件 =================
 function bindEvents() {
     $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { renderTags(); $('#bl-purifier-popup').fadeIn(200); });
     $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
@@ -444,55 +525,35 @@ function bindEvents() {
         showConfirmModal();
     });
 
-    // 1. 纯视觉清洗（流式专用）：只改屏幕显示的字，不碰底层数据
     const visualCleanseOnly = () => {
         const regex = getPurifyRegex();
         if (regex) purifyDOM(document.getElementById('chat'), regex);
     };
 
-    // 2. 深度数据层清洗（延迟 1000ms 确保酒馆写入完成）
     const delayedFullCleanse = () => setTimeout(performGlobalCleanse, 1000); 
     
-    // 流式打字中：只执行 DOM 视觉替换，不影响 AI 的 Context
     if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, visualCleanseOnly);      
-    
-    // 打字彻底结束后（或被手动停止时）：执行底层物理删除 + 存入文档 + 刷新小铅笔
     if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, delayedFullCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, delayedFullCleanse); 
-    
-    // 其他常规操作时清理
     if (event_types.MESSAGE_RECEIVED) eventSource.on(event_types.MESSAGE_RECEIVED, delayedFullCleanse); 
     if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, delayedFullCleanse);      
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);
 
-    // 绑定导出
+    // --- 绑定存档与导入导出按钮 ---
     $(document).off('click', '#bl-export-btn').on('click', '#bl-export-btn', exportRules);
-
-    // 绑定导入（点击按钮触发隐藏的 input）
     $(document).off('click', '#bl-import-click-btn').on('click', '#bl-import-click-btn', () => $('#bl-file-import').click());
     $(document).off('change', '#bl-file-import').on('change', '#bl-file-import', importRules);
 
-    // 绑定保存存档
     $(document).off('click', '#bl-save-preset-btn').on('click', '#bl-save-preset-btn', () => {
         const name = prompt("请输入新存档名称：");
         if (name) savePreset(name);
     });
 
-    // 绑定读取存档
     $(document).off('click', '#bl-load-preset-btn').on('click', '#bl-load-preset-btn', () => {
         const name = $('#bl-preset-select').val();
         if (name) loadPreset(name);
+        else alert("请先在下拉菜单中选择一个存档");
     });
-
-    // 补充一个渲染下拉菜单的函数
-    function renderPresetDropdown() {
-        const presets = extension_settings[extensionName].presets || {};
-        let options = '<option value="">-- 选择存档 --</option>';
-        for (const name in presets) {
-            options += `<option value="${name}">${name}</option>`;
-        }
-        $('#bl-preset-select').html(options);
-    }
 }
 
 function renderTags() {
@@ -518,9 +579,6 @@ function renderTags() {
     $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; padding: 10px 0;">当前无规则</div>');
 }
 
-/**
- * 自动数据迁移：将旧版的 bannedWords 无损升级为 3.0 的 rules 架构
- */
 function migrateOldData() {
     const settings = extension_settings[extensionName];
     if (settings && settings.bannedWords) {
@@ -541,9 +599,8 @@ function migrateOldData() {
 let isBooted = false;
 jQuery(() => {
     if (isBooted) return;
-    extension_settings[extensionName] = extension_settings[extensionName] || { ...defaultSettings };
+    extension_settings[extensionName] = extension_settings[extensionName] || { rules: [], presets: {} }; // 补全默认设置
     
-    // 执行数据迁移
     migrateOldData();
     if (!extension_settings[extensionName].rules) extension_settings[extensionName].rules = [];
 
@@ -555,92 +612,9 @@ jQuery(() => {
         initRealtimeInterceptor(); 
         performGlobalCleanse(); 
     };
+    
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
         if (document.getElementById('send_textarea')) boot();
     }
-
-    // --- 导出当前规则 ---
-function exportRules() {
-    const rules = extension_settings[extensionName].rules || [];
-    const dataStr = JSON.stringify(rules, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `purifier_rules_${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-// --- 导入规则 ---
-function importRules(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const importedRules = JSON.parse(e.target.result);
-            if (!Array.isArray(importedRules)) throw new Error("格式错误");
-            
-            // 覆盖当前规则
-            extension_settings[extensionName].rules = importedRules;
-            
-            // 触发系统更新
-            isRegexDirty = true;
-            saveSettingsDebounced();
-            renderTags();
-            
-            alert("规则导入成功！");
-        } catch (err) {
-            alert("导入失败：请确保文件是有效的 JSON 规则文件。");
-        }
-        // 清空 input，允许重复导入同一个文件
-        event.target.value = ''; 
-    };
-    reader.readAsText(file);
-}
-
-// --- 保存当前规则为新存档 ---
-function savePreset(presetName) {
-    if (!presetName) return;
-    
-    // 初始化 presets 对象（兼容老用户）
-    if (!extension_settings[extensionName].presets) {
-        extension_settings[extensionName].presets = {};
-    }
-    
-    // 深拷贝当前规则存入
-    const currentRules = JSON.parse(JSON.stringify(extension_settings[extensionName].rules));
-    extension_settings[extensionName].presets[presetName] = currentRules;
-    
-    saveSettingsDebounced();
-    alert(`已保存为存档: ${presetName}`);
-    renderPresetDropdown(); // 更新 UI 的下拉菜单
-}
-
-// --- 切换（加载）指定存档 ---
-function loadPreset(presetName) {
-    const presets = extension_settings[extensionName].presets;
-    if (!presets || !presets[presetName]) return;
-    
-    // 深拷贝取出，覆盖当前规则
-    extension_settings[extensionName].rules = JSON.parse(JSON.stringify(presets[presetName]));
-    
-    isRegexDirty = true;
-    saveSettingsDebounced();
-    renderTags();
-    performGlobalCleanse(); // 切换后立刻清理当前屏幕
-}
-
-// --- 删除存档 ---
-function deletePreset(presetName) {
-    if (extension_settings[extensionName].presets && extension_settings[extensionName].presets[presetName]) {
-        delete extension_settings[extensionName].presets[presetName];
-        saveSettingsDebounced();
-        renderPresetDropdown();
-    }
-}
 });
