@@ -146,13 +146,32 @@ function applyReplacements(originalText) {
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
     
-    // 1. 保护插件自身的弹窗，防止误删规则
+    // 1. 保护插件自身的弹窗，防止自己误删自己的规则
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
-    // 2. 保护酒馆的非聊天区域的实时打字体验！
-    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
-        return true;
-    }
-    // 只有真正在聊天主界面气泡里的内容，才会被实时净化
+
+    // 2. 保护“高级格式化”面板和“API设置”面板
+    if (node.closest('#advanced_formatting, #api_settings')) return true;
+
+    // 3. 精确枚举
+    const promptIds = [
+        // 系统自带
+        'system_prompt', 'post_history_prompt', 'floating_prompt', 
+        'nsfw_prompt', 'author_note', 'jailbreak_prompt',
+        'chat_completions_system_prompt', 'chat_completions_jailbreak_prompt',
+        // Prompt Manager 预设
+        'completion_prompt_manager_popup_entry_form_prompt',
+        'completion_prompt_manager_popup_entry_form_name',
+        // 角色卡特写
+        'description_textarea', 'personality_textarea', 'scenario_textarea', 
+        'mes_example_textarea', 'first_mes_textarea', 'creator_notes_textarea'
+    ];
+    if (node.id && promptIds.includes(node.id)) return true;
+    
+    // 世界书
+    if (node.id && node.id.startsWith('world_entry_content_')) return true;
+    if (node.tagName === 'TEXTAREA' && node.name === 'comment') return true;
+
+    // 除此之外一律不保护！User 人设、主发送框等将保持实时净化
     return false;
 }
 
