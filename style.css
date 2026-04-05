@@ -196,6 +196,8 @@
 }
 .bl-badge-text { background: var(--bl-text-secondary) !important; color: white !important; }
 .bl-badge-regex { background: var(--bl-accent-color) !important; color: white !important; }
+/* 新增：简易模式徽章 */
+.bl-badge-simple { background: #0984e3 !important; color: white !important; }
 
 /* --- 手机端微调 --- */
 @media screen and (max-width: 600px) {
