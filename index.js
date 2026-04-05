@@ -8,6 +8,7 @@ let cachedRegex = null;
 let wordToRuleMap = {};
 let isRegexDirty = true; 
 let currentEditingIndex = -1; 
+let currentEditingSubrules = []; // 存放当前编辑的子规则数组
 
 function parseInputToWords(text) {
     if (!text) return [];
@@ -22,14 +23,17 @@ function getPurifyRegex() {
     let allTargets = [];
 
     rules.forEach(rule => {
-        // ★ 核心修改：如果规则被禁用，则直接跳过，不加入正则引擎
         if (rule.enabled === false) return; 
         
-        rule.targets.forEach(t => {
-            if (t) {
-                allTargets.push(t);
-                wordToRuleMap[t] = rule.replacements; 
-            }
+        // 兼容新版嵌套 subRules 结构
+        const subRulesToProcess = rule.subRules || [];
+        subRulesToProcess.forEach(sub => {
+            sub.targets.forEach(t => {
+                if (t) {
+                    allTargets.push(t);
+                    wordToRuleMap[t] = sub.replacements; 
+                }
+            });
         });
     });
 
@@ -290,7 +294,7 @@ function setupUI() {
                 </div>
             </div>
 
-            <button id="bl-open-new-rule-btn" class="bl-add-rule-btn" style="width:100%; margin-bottom:10px;">➕ 新增规则组</button>
+            <button id="bl-open-new-rule-btn" class="bl-add-rule-btn" style="width:100%; margin-bottom:10px;">➕ 新增规则组 (合集)</button>
 
             <div id="bl-tags-container" style="max-height:220px; overflow-y:auto; padding-right:5px;"></div>
             
@@ -299,29 +303,28 @@ function setupUI() {
             </div>
         </div>`);
 
+    // 重构的嵌套编辑弹窗
     $('body').append(`
         <div id="bl-rule-edit-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
-            <div style="background:var(--bl-background-popup); padding:20px 25px; border-radius:12px; width:90%; max-width:400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color); display:flex; flex-direction:column; gap:12px; box-sizing:border-box;">
-                <h3 id="bl-edit-modal-title" style="margin:0; font-size:18px; color:var(--bl-text-primary);">编辑规则组</h3>
+            <div style="background:var(--bl-background-popup); padding:20px 25px; border-radius:12px; width:90%; max-width:440px; max-height:85vh; display:flex; flex-direction:column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color); box-sizing:border-box;">
                 
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">规则组名称 (方便识别)</label>
-                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：口癖修正、脏话过滤...">
+                <h3 id="bl-edit-modal-title" style="margin:0 0 12px 0; font-size:18px; color:var(--bl-text-primary); flex-shrink:0;">编辑规则合集</h3>
+                
+                <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px; flex-shrink:0;">
+                    <label style="font-size:13px; color:var(--bl-text-secondary);">规则组合集名称</label>
+                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：霸总与强制情态清除">
                 </div>
                 
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">目标词 (必填，逗号/空格分隔)</label>
-                    <textarea id="bl-edit-targets" class="bl-textarea" rows="3" placeholder="例如：苹果, 香蕉"></textarea>
-                </div>
+                <label style="font-size:13px; color:var(--bl-text-secondary); margin-bottom:6px; flex-shrink:0;">子规则列表 (可包含无限多对映射)</label>
                 
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label style="font-size:13px; color:var(--bl-text-secondary);">替换词 (可选，为空则直接删除)</label>
-                    <textarea id="bl-edit-reps" class="bl-textarea" rows="3" placeholder="例如：水果"></textarea>
-                </div>
+                <div id="bl-edit-subrules-container" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:5px; margin-bottom:10px;">
+                    </div>
                 
-                <div style="display:flex; justify-content:space-between; gap:10px; margin-top:10px;">
+                <button id="bl-add-subrule-btn" style="flex-shrink:0; padding:10px; border-radius:8px; background:var(--bl-background-secondary); border:1px dashed var(--bl-border-color); color:var(--bl-text-primary); cursor:pointer; font-size:13px; font-weight:bold; transition: opacity 0.2s; margin-bottom:12px;">➕ 添加一组新映射</button>
+                
+                <div style="display:flex; justify-content:space-between; gap:10px; flex-shrink:0;">
                     <button id="bl-edit-cancel" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); color:var(--bl-text-primary); cursor:pointer; font-weight:bold;">取消</button>
-                    <button id="bl-edit-save" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-accent-color); border:none; color:white; font-weight:bold; cursor:pointer;">保存</button>
+                    <button id="bl-edit-save" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-accent-color); border:none; color:white; font-weight:bold; cursor:pointer;">保存合集</button>
                 </div>
             </div>
         </div>
@@ -402,11 +405,14 @@ function updateToolbarUI() {
 function renderTags() {
     const rules = extension_settings[extensionName]?.rules || [];
     const html = rules.map((r, i) => {
-        const name = r.name || `未命名规则组 ${i + 1}`;
-        let targetPreview = r.targets.join(', ');
-        if (targetPreview.length > 20) targetPreview = targetPreview.substring(0, 20) + '...';
+        const name = r.name || `未命名合集 ${i + 1}`;
         
-        // 判断启用状态（兼容旧数据：只要不是明确的 false 就是 true）
+        // 预览所有子规则里的第一个目标词
+        const allTargets = (r.subRules || []).flatMap(s => s.targets);
+        let targetPreview = allTargets.join(', ');
+        if (targetPreview.length > 20) targetPreview = targetPreview.substring(0, 20) + '...';
+        if (targetPreview.length === 0) targetPreview = "无有效规则";
+        
         const isEnabled = r.enabled !== false; 
         const checkedAttr = isEnabled ? 'checked' : '';
         const cardClass = isEnabled ? 'bl-rule-card' : 'bl-rule-card bl-rule-disabled';
@@ -414,25 +420,64 @@ function renderTags() {
         return `
         <div class="${cardClass}">
             <div style="display:flex; align-items:center; gap:8px; overflow:hidden; flex:1;">
-                <label class="bl-toggle-switch" title="启用/禁用此规则组">
+                <label class="bl-toggle-switch" title="启用/禁用此合集">
                     <input type="checkbox" class="bl-rule-toggle" data-index="${i}" ${checkedAttr}>
                     <span class="bl-toggle-slider"></span>
                 </label>
                 
                 <div class="bl-rule-info">
-                    <div class="bl-rule-name">${name}</div>
+                    <div class="bl-rule-name">${name} <span style="font-size:11px; font-weight:normal; opacity:0.7;">(含 ${(r.subRules||[]).length} 组映射)</span></div>
                     <div class="bl-rule-preview">过滤: ${targetPreview}</div>
                 </div>
             </div>
             
             <div class="bl-rule-actions">
-                <button class="bl-rule-edit" data-index="${i}" title="编辑">✏️</button>
-                <button class="bl-rule-del" data-index="${i}" title="删除">&times;</button>
+                <button class="bl-rule-edit" data-index="${i}" title="编辑合集">✏️</button>
+                <button class="bl-rule-del" data-index="${i}" title="删除合集">&times;</button>
             </div>
         </div>`;
     }).join('');
     
     $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:13px; padding: 20px 0;">当前无规则，请点击上方按钮新增</div>');
+}
+
+// 动态渲染弹窗内的子规则列表
+function renderSubrulesToModal() {
+    const container = $('#bl-edit-subrules-container');
+    container.empty();
+    
+    if (currentEditingSubrules.length === 0) {
+        container.html('<div style="text-align:center; color:var(--bl-text-secondary); font-size:12px; padding:10px;">当前合集没有映射规则，请点击下方按钮添加。</div>');
+        return;
+    }
+    
+    currentEditingSubrules.forEach((sub, i) => {
+        const tStr = sub.targets.join(', ');
+        const rStr = sub.replacements.join(', ');
+        container.append(`
+            <div class="bl-subrule-row" style="display:flex; gap:8px; align-items:center; padding:10px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); border-radius:8px; position:relative;">
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                    <textarea class="bl-sub-target bl-textarea" rows="2" placeholder="被替换词汇 (逗号/空格分隔)\n例如：嘴角勾起, 并不存在">${tStr}</textarea>
+                    <div style="text-align:center; font-size:12px; color:var(--bl-text-secondary); line-height:1;">⬇️ 替换为 ⬇️</div>
+                    <textarea class="bl-sub-rep bl-textarea" rows="2" placeholder="替换后词汇 (留空则直接删除)\n例如：浅笑了一下">${rStr}</textarea>
+                </div>
+                <button class="bl-del-subrule-btn" data-index="${i}" title="删除此组词汇" style="background:none; border:none; color:var(--bl-danger-color); font-size:20px; cursor:pointer; padding:5px;">&times;</button>
+            </div>
+        `);
+    });
+}
+
+// 同步编辑界面的内容到数据结构
+function syncSubrulesFromDOM() {
+    currentEditingSubrules = [];
+    $('.bl-subrule-row').each(function() {
+        const tStr = $(this).find('.bl-sub-target').val();
+        const rStr = $(this).find('.bl-sub-rep').val();
+        currentEditingSubrules.push({
+            targets: parseInputToWords(tStr),
+            replacements: parseInputToWords(rStr)
+        });
+    });
 }
 
 function openEditModal(index = -1) {
@@ -441,17 +486,17 @@ function openEditModal(index = -1) {
     const modal = $('#bl-rule-edit-modal');
     
     if (index === -1) {
-        $('#bl-edit-modal-title').text('✨ 新增规则组');
+        $('#bl-edit-modal-title').text('✨ 新增规则合集');
         $('#bl-edit-name').val('');
-        $('#bl-edit-targets').val('');
-        $('#bl-edit-reps').val('');
+        currentEditingSubrules = [{ targets: [], replacements: [] }]; // 默认给一个空对
     } else {
         const rule = settings.rules[index];
-        $('#bl-edit-modal-title').text('✏️ 编辑规则组');
+        $('#bl-edit-modal-title').text('✏️ 编辑规则合集');
         $('#bl-edit-name').val(rule.name || '');
-        $('#bl-edit-targets').val(rule.targets.join(', '));
-        $('#bl-edit-reps').val(rule.replacements.join(', '));
+        currentEditingSubrules = JSON.parse(JSON.stringify(rule.subRules || []));
     }
+    
+    renderSubrulesToModal();
     modal.css('display', 'flex');
 }
 
@@ -472,19 +517,17 @@ function bindEvents() {
         openEditModal($(this).data('index'));
     });
     
-    // ★ 监听开关点击事件
+    // 开关交互
     $(document).off('change', '.bl-rule-toggle').on('change', '.bl-rule-toggle', function() {
         const index = $(this).data('index');
-        const isChecked = $(this).prop('checked');
-        
-        // 变更数据并触发底层重算
-        extension_settings[extensionName].rules[index].enabled = isChecked;
+        extension_settings[extensionName].rules[index].enabled = $(this).prop('checked');
         isRegexDirty = true;
         saveSettingsDebounced();
         renderTags();
         performGlobalCleanse();
     });
     
+    // 主界面删除合集
     $(document).off('click', '.bl-rule-del').on('click', '.bl-rule-del', function() {
         extension_settings[extensionName].rules.splice($(this).data('index'), 1);
         isRegexDirty = true;
@@ -492,30 +535,48 @@ function bindEvents() {
         renderTags();
     });
 
+    // 弹窗内：添加子规则对
+    $(document).off('click', '#bl-add-subrule-btn').on('click', '#bl-add-subrule-btn', () => {
+        syncSubrulesFromDOM();
+        currentEditingSubrules.push({ targets: [], replacements: [] });
+        renderSubrulesToModal();
+        
+        // 自动滚动到底部
+        const container = $('#bl-edit-subrules-container');
+        container.scrollTop(container[0].scrollHeight);
+    });
+    
+    // 弹窗内：删除子规则对
+    $(document).off('click', '.bl-del-subrule-btn').on('click', '.bl-del-subrule-btn', function() {
+        syncSubrulesFromDOM();
+        currentEditingSubrules.splice($(this).data('index'), 1);
+        renderSubrulesToModal();
+    });
+
     $(document).off('click', '#bl-edit-cancel').on('click', '#bl-edit-cancel', () => {
         $('#bl-rule-edit-modal').hide();
     });
 
     $(document).off('click', '#bl-edit-save').on('click', '#bl-edit-save', () => {
+        syncSubrulesFromDOM();
         const nameVal = $('#bl-edit-name').val().trim();
-        const targets = parseInputToWords($('#bl-edit-targets').val());
-        const replacements = parseInputToWords($('#bl-edit-reps').val());
+        
+        // 过滤掉没填目标词的无效映射对
+        const validSubrules = currentEditingSubrules.filter(sub => sub.targets.length > 0);
 
-        if (targets.length === 0) {
-            alert("目标词不能为空！");
+        if (validSubrules.length === 0) {
+            alert("至少需要提供一组有效的目标词！(被替换词不能全空)");
             return;
         }
 
-        // 保存时，如果是编辑已有规则，继承它原本的开关状态；如果是新建，则默认开启
         let isEnabled = true;
         if (currentEditingIndex !== -1) {
             isEnabled = extension_settings[extensionName].rules[currentEditingIndex].enabled !== false;
         }
 
         const newRule = {
-            name: nameVal || `规则组 ${extension_settings[extensionName].rules.length + 1}`,
-            targets: targets,
-            replacements: replacements,
+            name: nameVal || `合集 ${extension_settings[extensionName].rules.length + 1}`,
+            subRules: validSubrules,
             enabled: isEnabled 
         };
 
@@ -536,6 +597,7 @@ function bindEvents() {
         showConfirmModal();
     });
 
+    // 预设相关事件保持不变
     $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
         const settings = extension_settings[extensionName];
         const name = $(this).val();
@@ -643,9 +705,17 @@ function bindEvents() {
                     
                     const settings = extension_settings[extensionName];
                     
+                    // 兼容导入逻辑
                     importedRules.forEach((r, idx) => {
-                        if (!r.name) r.name = r.targets?.[0] || `未命名规则 ${idx+1}`;
-                        if (r.enabled === undefined) r.enabled = true; // 导入时补全开关状态
+                        if (!r.name) r.name = r.targets?.[0] || `未命名合集 ${idx+1}`;
+                        if (r.enabled === undefined) r.enabled = true;
+                        
+                        if (r.targets) {
+                            r.subRules = [{ targets: r.targets, replacements: r.replacements || [] }];
+                            delete r.targets;
+                            delete r.replacements;
+                        }
+                        if (!r.subRules) r.subRules = [];
                     });
                     
                     settings.rules = importedRules;
@@ -694,8 +764,7 @@ function migrateOldData() {
             settings.rules = settings.rules || [];
             settings.rules.push({
                 name: "旧版本过滤词",
-                targets: [...settings.bannedWords],
-                replacements: [],
+                subRules: [{ targets: [...settings.bannedWords], replacements: [] }],
                 enabled: true
             });
         }
@@ -709,9 +778,21 @@ function migrateOldData() {
 
         if (settings.rules && settings.rules.length > 0) {
             settings.rules.forEach((r, i) => {
-                if (!r.name) r.name = `规则组 ${i+1}`; 
-                if (r.enabled === undefined) r.enabled = true; // 给没有开关属性的旧规则默认开启
+                if (!r.name) r.name = `合集 ${i+1}`; 
+                if (r.enabled === undefined) r.enabled = true; 
+                
+                // 【核心迁移】如果发现还在用单对单结构的 targets，自动包装进 subRules 抽屉里
+                if (r.targets) {
+                    r.subRules = [{
+                        targets: r.targets,
+                        replacements: r.replacements || []
+                    }];
+                    delete r.targets;
+                    delete r.replacements;
+                }
+                if (!r.subRules) r.subRules = [];
             });
+            
             if (Object.keys(settings.presets).length === 0) {
                 settings.presets["默认存档"] = JSON.parse(JSON.stringify(settings.rules));
                 settings.activePreset = "默认存档";
