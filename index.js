@@ -145,7 +145,7 @@ function applyReplacements(originalText) {
 
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
-    if (node.id === 'send_textarea' || node.classList.contains('edit_textarea')) return true;
+    if (node.classList.contains('edit_textarea')) return true; 
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
     if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
         return true;
