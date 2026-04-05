@@ -34,7 +34,7 @@
     
     display: none; 
     flex-direction: column !important;
-    gap: 15px !important; /* 缩小一点间距给底部按钮留空间 */
+    gap: 15px !important; 
     box-sizing: border-box !important;
     
     backdrop-filter: blur(16px) !important;
@@ -90,7 +90,6 @@
 }
 #bl-purifier-popup .bl-tag span:hover { color: var(--bl-danger-color) !important; }
 
-/* --- 恢复底部“深度屏蔽”按钮样式 --- */
 #bl-purifier-popup .bl-footer {
     margin-top: 5px !important;
     padding-top: 15px !important;
@@ -114,20 +113,7 @@
 }
 #bl-purifier-popup .bl-deep-clean-btn:hover { opacity: 0.8 !important; }
 
-/* --- 手机端微调 (确保按钮不超出屏幕) --- */
-@media screen and (max-width: 600px) {
-    #bl-purifier-popup { 
-        padding: 15px 20px !important; 
-        width: 92% !important; 
-        top: 15vh !important; 
-        transform: translateX(-50%) !important; 
-    }
-    #bl-purifier-popup .bl-input { font-size: 14px !important; padding: 8px 12px !important; }
-    #bl-purifier-popup .bl-add-btn { padding: 8px 14px !important; }
-    #bl-purifier-popup .bl-deep-clean-btn { padding: 10px !important; font-size: 14px !important; }
-}
-
-/* --- 新增：批量添加弹窗样式 --- */
+/* --- 批量添加弹窗样式 --- */
 #bl-batch-popup {
     position: fixed !important;
     top: 15vh !important; 
@@ -138,7 +124,7 @@
     background: var(--bl-background-popup) !important;
     border: 1px solid var(--bl-border-color) !important;
     border-radius: 12px !important;
-    z-index: 9999999 !important; /* 层级略高于主弹窗，确保覆盖 */
+    z-index: 9999999 !important; 
     padding: 20px 25px !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
     display: none; 
@@ -177,7 +163,7 @@
 }
 #bl-batch-textarea:focus { border-color: var(--bl-accent-color) !important; }
 
-/* --- 3.0.0 规则组 UI 适配 --- */
+/* --- 规则组 UI 适配 --- */
 #bl-purifier-popup .bl-rule-builder {
     display: flex !important;
     flex-direction: column !important;
@@ -220,21 +206,7 @@
 }
 #bl-purifier-popup .bl-add-rule-btn:hover { opacity: 0.8 !important; }
 
-#bl-purifier-popup .bl-tag {
-    display: flex !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-#bl-purifier-popup .bl-tag-content {
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-    flex: 1 !important;
-}
-#bl-purifier-popup .bl-tag-del { margin-left: 10px !important; }
-
-/* --- 3.0.1 标签居中与滑动布局 --- */
+/* --- 标签居中与滑动布局 --- */
 #bl-purifier-popup .bl-tag {
     display: flex !important;
     align-items: center !important;
@@ -246,39 +218,28 @@
 
 #bl-purifier-popup .bl-tag-layout {
     display: grid !important;
-    grid-template-columns: 1fr auto 1fr !important; /* 核心：1等份 自动 1等份，强制居中 */
+    grid-template-columns: 1fr auto 1fr !important; 
     align-items: center !important;
     gap: 10px !important;
     flex: 1 !important;
-    min-width: 0 !important; /* 防止内部文字过长撑破外层 Flex */
+    min-width: 0 !important; 
 }
 
 #bl-purifier-popup .bl-tag-scroll-box {
     overflow-x: auto !important;
-    white-space: nowrap !important; /* 强制不换行 */
-    scrollbar-width: none !important; /* Firefox 隐藏滚动条 */
-    -ms-overflow-style: none !important; /* IE 隐藏滚动条 */
+    white-space: nowrap !important; 
+    scrollbar-width: none !important; 
+    -ms-overflow-style: none !important; 
     font-size: 13px !important;
 }
 
-/* Chrome/Safari/Edge 隐藏滚动条，但保留滚动功能 */
 #bl-purifier-popup .bl-tag-scroll-box::-webkit-scrollbar {
     display: none !important; 
 }
 
-#bl-purifier-popup .bl-tag-left {
-    text-align: right !important; /* 目标词靠右紧贴箭头 */
-}
-
-#bl-purifier-popup .bl-tag-right {
-    text-align: left !important; /* 替换词靠左紧贴箭头 */
-}
-
-#bl-purifier-popup .bl-tag-arrow {
-    color: var(--bl-text-primary) !important;
-    font-size: 14px !important;
-    user-select: none !important;
-}
+#bl-purifier-popup .bl-tag-left { text-align: right !important; }
+#bl-purifier-popup .bl-tag-right { text-align: left !important; }
+#bl-purifier-popup .bl-tag-arrow { color: var(--bl-text-primary) !important; font-size: 14px !important; user-select: none !important; }
 
 #bl-purifier-popup .bl-tag-del {
     flex-shrink: 0 !important;
@@ -290,14 +251,60 @@
     line-height: 1 !important;
     transition: color 0.2s !important;
 }
-#bl-purifier-popup .bl-tag-del:hover {
-    color: var(--bl-danger-color) !important;
-}
+#bl-purifier-popup .bl-tag-del:hover { color: var(--bl-danger-color) !important; }
 
-/* --- Specific rules to shrink preset management icons --- */
+
+/* ========================================= */
+/* --- 存档 --- */
+/* ========================================= */
+
+/* 缩小预设管理那两个带 emoji 的图标按钮 */
 #bl-purifier-popup #bl-preset-rename,
 #bl-purifier-popup #bl-preset-delete {
-    padding: 6px 10px !important; /* Reduced padding for smaller buttons */
-    font-size: 16px !important;    /* Reduced font size to shrink the emoji icons */
-    line-height: 1 !important;    /* Keeps the icon centered */
+    padding: 6px 10px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+}
+
+/* 强制让新建、保存、导入、导出四个按钮所在的容器撑满宽度 */
+#bl-purifier-popup .bl-tools-bar > div:last-child {
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 四个按钮等分撑满的设置 */
+.bl-tool-btn {
+    flex: 1 1 0% !important; 
+    padding: 8px 0 !important; 
+    border-radius: 6px !important;
+    border: 1px solid var(--bl-border-color) !important;
+    background: var(--bl-background-secondary) !important;
+    color: var(--bl-text-primary) !important;
+    cursor: pointer !important;
+    font-size: 13px !important; 
+    font-weight: 500 !important;
+    text-align: center !important;
+    transition: background 0.2s, opacity 0.2s !important;
+    white-space: nowrap !important; 
+}
+.bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
+
+
+/* --- 手机端微调 --- */
+@media screen and (max-width: 600px) {
+    #bl-purifier-popup { 
+        padding: 15px 20px !important; 
+        width: 92% !important; 
+        top: 15vh !important; 
+        transform: translateX(-50%) !important; 
+    }
+    #bl-purifier-popup .bl-input { font-size: 14px !important; padding: 8px 12px !important; }
+    #bl-purifier-popup .bl-add-btn { padding: 8px 14px !important; }
+    #bl-purifier-popup .bl-deep-clean-btn { padding: 10px !important; font-size: 14px !important; }
+    
+    /* 手机上自动缩小上面四个按钮的字号和高度，防止挤在一起 */
+    .bl-tool-btn {
+        font-size: 12px !important; 
+        padding: 7px 0 !important;  
+    }
 }
