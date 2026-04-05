@@ -294,22 +294,10 @@
     color: var(--bl-danger-color) !important;
 }
 
-/* --- 工具栏附加样式 --- */
-.bl-tool-btn {
-    flex: 1 !important;
-    padding: 8px 10px !important;
-    border-radius: 6px !important;
-    border: 1px solid var(--bl-border-color) !important;
-    background: var(--bl-background-secondary) !important;
-    color: var(--bl-text-primary) !important;
-    cursor: pointer !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    text-align: center !important;
-    transition: background 0.2s, opacity 0.2s !important;
-}
-
-.bl-tool-btn:hover {
-    background: var(--bl-border-color) !important;
-    opacity: 0.9 !important;
+/* --- Specific rules to shrink preset management icons --- */
+#bl-purifier-popup #bl-preset-rename,
+#bl-purifier-popup #bl-preset-delete {
+    padding: 6px 10px !important; /* Reduced padding for smaller buttons */
+    font-size: 16px !important;    /* Reduced font size to shrink the emoji icons */
+    line-height: 1 !important;    /* Keeps the icon centered */
 }
