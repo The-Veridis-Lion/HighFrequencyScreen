@@ -303,12 +303,16 @@ function initRealtimeInterceptor() {
 }
 
 function setupUI() {
+    // 修复 1：增加挂载点双保险。如果原有的 wand 容器不存在，就将其挂载到酒馆原生的左侧扩展面板 (#extensions_settings)
+    const targetContainer = $('#data_bank_wand_container').length ? $('#data_bank_wand_container') : $('#extensions_settings');
+    
     if (!$('#bl-wand-btn').length) {
-        $('#data_bank_wand_container').append(`
-            <div id="bl-wand-btn" title="词汇映射管理">
-                <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
+        targetContainer.append(`
+            <div id="bl-wand-btn" class="menu_button" title="词汇映射管理" style="cursor: pointer; padding: 10px; border-top: 1px solid var(--SmartThemeBorderColor, #555);">
+                <i class="fa-solid fa-language fa-fw"></i><span> 词汇映射</span>
             </div>`);
     }
+
     if (!$('#bl-purifier-popup').length) {
         $('body').append(`
             <div id="bl-purifier-popup">
@@ -329,12 +333,21 @@ function setupUI() {
             </div>`);
     }
 
-    // 省略中间的 confirm-modal HTML (保留你原有的深度清理警告弹窗不变)
     if (!$('#bl-confirm-modal').length) {
-        // ... (保留你原有的 bl-confirm-modal 结构)
+        $('body').append(`
+            <div id="bl-confirm-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9999999;flex-direction:column;justify-content:center;align-items:center;color:white;">
+                <div style="background:var(--bl-background-popup, #222);padding:25px;border-radius:12px;text-align:center;max-width:400px;border:1px solid var(--bl-border-color, #444);">
+                    <h3 style="color:#ff4757;margin-top:0;">⚠️ 危险操作警告</h3>
+                    <p style="font-size:14px;color:#ccc;line-height:1.5;">这将会强制扫描并修改当前所有内存聊天记录、酒馆配置数据。<br><br><b>强烈建议在此操作前，将SillyTavern当前的预设切换至「Default」或任意废弃预设！</b>以免常用预设被意外污染！</p>
+                    <div style="margin-top:20px;display:flex;gap:15px;justify-content:center;">
+                        <button id="bl-modal-cancel" style="padding:10px 20px;border-radius:6px;border:none;background:#555;color:white;cursor:pointer;">取消</button>
+                        <button id="bl-modal-confirm" style="padding:10px 20px;border-radius:6px;border:none;background:#d32f2f;color:white;cursor:pointer;">我已阅读警告，已完成切换预设</button>
+                    </div>
+                </div>
+            </div>
+        `);
     }
 
-    // ================= 重点修改：存档界面 =================
     if (!$('.bl-tools-bar').length) {
         $(`<div class="bl-tools-bar">
             <div class="bl-tools-group bl-row-full">
@@ -349,7 +362,6 @@ function setupUI() {
                 </button>
             </div>
             
-            //第二行
             <div class="bl-tools-group bl-row-actions">
                 <button id="bl-new-preset-btn" class="bl-add-btn" title="另存为新存档">新建</button>
                 <button id="bl-save-preset-btn" class="bl-add-btn" title="保存到当前存档">保存</button>
@@ -360,7 +372,6 @@ function setupUI() {
         </div>`).insertBefore('.bl-rule-builder'); 
     }
     
-    // 初始化时渲染下拉菜单
     renderPresetDropdown();
 }
 
