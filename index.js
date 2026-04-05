@@ -55,14 +55,18 @@ function dynamicReplacer(match) {
     return reps[randIndex];
 }
 
-// 保护判断：依然保留，主要用于防止流式输出误伤编辑框内的文字
+// 绝对保护名单：防止错删预设面板或打字框
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
     if (node.id === 'send_textarea' || node.classList.contains('edit_textarea')) return true;
     if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
+    if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
+        return true;
+    }
     return false;
 }
 
+// 深度对象洗刷器
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
     if (!rootObj || typeof rootObj !== 'object') return changes;
@@ -95,8 +99,26 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     return changes;
 }
 
+// 恢复轻量级DOM清洗器：专用于对付被复杂标签包裹的思维链
+function purifyDOM(rootNode, regex) {
+    if (!rootNode) return;
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, null, false);
+    
+    let node;
+    while (node = walker.nextNode()) {
+        const parent = node.parentNode;
+        if (parent && (isProtectedNode(parent) || (document.activeElement && (document.activeElement === parent || parent.contains(document.activeElement))))) {
+            continue;
+        }
+        
+        const original = node.nodeValue || '';
+        const cleaned = original.replace(regex, dynamicReplacer);
+        if (original !== cleaned) node.nodeValue = cleaned;
+    }
+}
+
 // ==========================================
-// 核心逻辑 1：静态物理屏蔽 (仅在生成结束等时刻调用，清洗底层数据)
+// 核心逻辑 1：静态物理屏蔽 (清洗整个 msg 对象，不论思维链藏在哪)
 // ==========================================
 function performDataCleanse() {
     const regex = getPurifyRegex();
@@ -105,38 +127,10 @@ function performDataCleanse() {
     
     if (chat && Array.isArray(chat)) {
         chat.forEach((msg, index) => {
-            let msgChanged = false; 
+            // 对整个消息对象进行深度核打击，不管ST是存为 msg.mes 还是 msg.thought
+            const scrubbedCount = safeDeepScrub(msg, regex, false);
             
-            // 物理清洗主体文本
-            if (typeof msg.mes === 'string') {
-                const cleaned = msg.mes.replace(regex, dynamicReplacer);
-                if (msg.mes !== cleaned) { 
-                    msg.mes = cleaned; 
-                    msgChanged = true; 
-                }
-            }
-            
-            // 物理清洗滑动分支 (Swipes)
-            if (msg.swipes && Array.isArray(msg.swipes)) {
-                for (let i = 0; i < msg.swipes.length; i++) {
-                    if (typeof msg.swipes[i] === 'string') {
-                        const cleanedSwipe = msg.swipes[i].replace(regex, dynamicReplacer);
-                        if (msg.swipes[i] !== cleanedSwipe) {
-                            msg.swipes[i] = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    } else if (typeof msg.swipes[i] === 'object' && msg.swipes[i] !== null && typeof msg.swipes[i].mes === 'string') {
-                        const cleanedSwipe = msg.swipes[i].mes.replace(regex, dynamicReplacer);
-                        if (msg.swipes[i].mes !== cleanedSwipe) {
-                            msg.swipes[i].mes = cleanedSwipe;
-                            msgChanged = true;
-                        }
-                    }
-                }
-            }
-
-            // 如果底层数据有变动，通知 ST 原生刷新该消息块
-            if (msgChanged) {
+            if (scrubbedCount > 0) {
                 chatChanged = true;
                 try {
                     if (typeof updateMessageBlock === 'function') {
@@ -147,7 +141,6 @@ function performDataCleanse() {
         });
     }
     
-    // 底层数据处理完毕后存盘
     if (chatChanged) {
         try {
             if (typeof saveChat === 'function') saveChat();
@@ -155,10 +148,13 @@ function performDataCleanse() {
             console.error("[Ultimate Purifier] 存盘失败", e);
         }
     }
+    
+    // 生成结束后，给聊天区域来一次最终画面扫描，确保思维链 Markdown 渲染后无残留
+    purifyDOM(document.getElementById('chat'), regex);
 }
 
 // ==========================================
-// 核心逻辑 2：动态视觉屏蔽 (极轻量级，专为流式输出准备)
+// 核心逻辑 2：动态视觉屏蔽 (依然轻量，但加入了对思维链 UI 的拦截)
 // ==========================================
 function initRealtimeInterceptor() {
     const chatObserver = new MutationObserver((mutations) => {
@@ -166,31 +162,22 @@ function initRealtimeInterceptor() {
         if (!regex) return;
         
         mutations.forEach(m => {
-            // 1. 应对打字机效果：只监听文本内容的变化 (极低性能开销)
-            if (m.type === 'characterData') {
-                if (m.target.parentNode && isProtectedNode(m.target.parentNode)) return;
-                const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
-                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
-                return;
-            }
-
-            // 2. 应对新块插入：只检索新元素内部的纯文本节点
             m.addedNodes.forEach(node => {
-                if (node.nodeType === 3) { 
+                if (node.nodeType === 3 || node.nodeType === 8) { 
                     if (node.parentNode && isProtectedNode(node.parentNode)) return;
                     const cleaned = node.nodeValue.replace(regex, dynamicReplacer);
                     if (node.nodeValue !== cleaned) node.nodeValue = cleaned;
                 } else if (node.nodeType === 1) { 
-                    // 仅对当前新增的气泡执行快速文本节点遍历
-                    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null, false);
-                    let textNode;
-                    while (textNode = walker.nextNode()) {
-                        if (textNode.parentNode && isProtectedNode(textNode.parentNode)) continue;
-                        const cleaned = textNode.nodeValue.replace(regex, dynamicReplacer);
-                        if (textNode.nodeValue !== cleaned) textNode.nodeValue = cleaned;
-                    }
+                    // 这里恢复 purifyDOM 处理新添加的元素框，完美兼容思维链
+                    purifyDOM(node, regex);
                 }
             });
+            
+            if (m.type === 'characterData') {
+                if (m.target.parentNode && isProtectedNode(m.target.parentNode)) return;
+                const cleaned = m.target.nodeValue.replace(regex, dynamicReplacer);
+                if (m.target.nodeValue !== cleaned) m.target.nodeValue = cleaned;
+            }
         });
     });
     
@@ -490,7 +477,7 @@ function bindEvents() {
         isRegexDirty = true;
         saveSettingsDebounced();
         renderTags();
-        performDataCleanse(); // 规则变化后自动清洗当前数据
+        performDataCleanse(); 
     });
     
     $(document).off('click', '.bl-rule-del').on('click', '.bl-rule-del', function() {
@@ -546,7 +533,7 @@ function bindEvents() {
         isRegexDirty = true; 
         saveSettingsDebounced();
         renderTags();
-        performDataCleanse(); // 新规则保存后清洗数据
+        performDataCleanse(); 
         $('#bl-rule-edit-modal').hide();
     });
 
@@ -676,7 +663,6 @@ function bindEvents() {
     });
 
     // 绑定物理清理核心到关键交互事件
-    // 只在每次生成结束、重新生成停止、或者消息被编辑/滑动完毕后，才调用底层物理删除
     if (event_types.MESSAGE_EDITED) eventSource.on(event_types.MESSAGE_EDITED, () => setTimeout(performDataCleanse, 100));      
     if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, performDataCleanse); 
     if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, performDataCleanse); 
@@ -742,9 +728,9 @@ jQuery(() => {
         isBooted = true;
         setupUI();
         bindEvents();
-        initRealtimeInterceptor(); // 开启打字机极速视觉过滤
+        initRealtimeInterceptor(); 
         updateToolbarUI();
-        performDataCleanse(); // 开机进行一次静态数据清理
+        performDataCleanse(); 
     };
     if (typeof eventSource !== 'undefined' && event_types.APP_READY) {
         eventSource.on(event_types.APP_READY, boot);
