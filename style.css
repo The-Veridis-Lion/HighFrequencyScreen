@@ -293,3 +293,58 @@
 #bl-purifier-popup .bl-tag-del:hover {
     color: var(--bl-danger-color) !important;
 }
+
+/* ====================================================
+   新增：存档与导入导出工具栏样式
+==================================================== */
+.bl-tools-bar {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-bottom: 5px !important; 
+    padding-bottom: 15px !important;
+    border-bottom: 1px solid var(--bl-border-color) !important;
+    flex-wrap: wrap !important; /* 允许换行，防止挤压 */
+}
+
+.bl-tools-group {
+    display: flex !important;
+    gap: 8px !important;
+    align-items: center !important;
+}
+
+/* 下拉菜单样式复用 bl-input，但做微调 */
+#bl-preset-select {
+    width: auto !important;
+    min-width: 140px !important;
+    padding: 8px 10px !important;
+    cursor: pointer !important;
+}
+
+/* 导出/导入按钮的特殊颜色 (覆盖默认的紫色 accent-color) */
+#bl-export-btn { background-color: #2e7d32 !important; } /* 绿色 */
+#bl-export-btn:hover { opacity: 0.8 !important; }
+
+#bl-import-click-btn { background-color: #0277bd !important; } /* 蓝色 */
+#bl-import-click-btn:hover { opacity: 0.8 !important; }
+
+/* ====================================================
+   手机端响应式补充 (屏幕小于 600px 时)
+==================================================== */
+@media screen and (max-width: 600px) {
+    .bl-tools-bar {
+        flex-direction: column !important; /* 手机端改为上下两行排列 */
+        align-items: stretch !important;
+    }
+    .bl-tools-group {
+        justify-content: space-between !important; /* 按钮在行内分散对齐 */
+    }
+    #bl-preset-select {
+        flex: 1 !important; /* 下拉框撑满剩余空间 */
+    }
+    .bl-tools-group .bl-add-btn {
+        flex: 1 !important; /* 手机端让导入导出按钮等宽 */
+        text-align: center !important;
+    }
+}
