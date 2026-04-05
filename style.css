@@ -133,16 +133,16 @@
 }
 .bl-tool-btn:hover { background: var(--bl-border-color) !important; opacity: 0.9 !important; }
 
-/* ================== 规则卡片样式 ================== */
+/* ================== 规则卡片样式 (重构为多行结构) ================== */
 #bl-tags-container::-webkit-scrollbar, #bl-edit-subrules-container::-webkit-scrollbar { width: 6px; }
 #bl-tags-container::-webkit-scrollbar-thumb, #bl-edit-subrules-container::-webkit-scrollbar-thumb { background: var(--bl-border-color); border-radius: 3px; }
 
 .bl-rule-card {
     display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
+    flex-direction: column !important; /* 改为垂直排版 */
+    align-items: stretch !important;
     width: 100% !important;
-    padding: 10px 12px !important;
+    padding: 12px 14px !important;
     background: var(--bl-input-bg) !important;
     border: 1px solid var(--bl-border-color) !important;
     border-radius: 8px !important;
@@ -152,19 +152,27 @@
 }
 .bl-rule-card:hover { border-color: var(--bl-accent-color) !important; }
 
-.bl-rule-info { flex: 1 !important; overflow: hidden !important; }
+.bl-rule-card-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+}
+
 .bl-rule-name { 
     font-weight: bold !important; 
     font-size: 14px !important; 
     color: var(--bl-text-primary) !important; 
-    margin-bottom: 4px !important; 
+    margin: 0 !important; 
 }
+
+/* 移除原来的一行省略限制，允许显示多行列表 */
 .bl-rule-preview { 
     font-size: 12px !important; 
     color: var(--bl-text-secondary) !important; 
-    white-space: nowrap !important; 
-    overflow: hidden !important; 
-    text-overflow: ellipsis !important; 
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+    border-top: 1px dashed var(--bl-border-color) !important;
 }
 
 .bl-rule-actions { display: flex !important; gap: 6px !important; align-items: center !important; margin-left:10px !important; }
@@ -182,7 +190,6 @@
 }
 .bl-rule-edit { font-size: 12px !important; }
 .bl-rule-del { font-size: 14px !important; color: var(--bl-text-secondary) !important;}
-
 .bl-rule-edit:hover { background: var(--bl-accent-color) !important; border-color: var(--bl-accent-color) !important; color: white !important;}
 .bl-rule-del:hover { background: var(--bl-danger-color) !important; border-color: var(--bl-danger-color) !important; color: white !important; }
 
