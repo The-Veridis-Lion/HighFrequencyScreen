@@ -341,11 +341,15 @@ function setupUI() {
                 <select id="bl-preset-select" class="bl-input">
                     <option value="">-- 临时规则 (未绑定存档) --</option>
                 </select>
+                <button id="bl-rename-preset-btn" class="bl-icon-btn" title="重命名当前存档">
+                    <i class="fa-solid fa-pencil"></i>
+                </button>
                 <button id="bl-delete-preset-btn" class="bl-icon-btn" title="永久删除当前存档">
                     <i class="fa-solid fa-skull"></i>
                 </button>
             </div>
-
+            
+            //第二行
             <div class="bl-tools-group bl-row-actions">
                 <button id="bl-new-preset-btn" class="bl-add-btn" title="另存为新存档">新建</button>
                 <button id="bl-save-preset-btn" class="bl-add-btn" title="保存到当前存档">保存</button>
@@ -730,7 +734,7 @@ function exportRules() {
     URL.revokeObjectURL(url);
 }
 
-// --- 5. 导入规则 ---
+// --- 5. 导入规则 (自动保存版) ---
 function importRules(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -742,19 +746,40 @@ function importRules(event) {
             if (!Array.isArray(importedRules)) throw new Error("格式错误");
             
             const settings = extension_settings[extensionName];
-            settings.rules = importedRules;
-            settings.activePreset = ""; // 导入的规则默认进入“临时状态”，防止误覆盖现有存档
             
+            // 提取去掉 .json 后的文件名作为默认名称
+            const defaultName = file.name.replace('.json', '');
+            const finalName = prompt("导入成功！请输入要保存的存档名称：", defaultName);
+            
+            if (finalName === null) {
+                // 如果用户点了取消，则仅作为临时规则预览
+                settings.rules = importedRules;
+                settings.activePreset = ""; 
+                alert("已取消保存，当前仅作为【临时规则】加载。");
+            } else {
+                // 确认保存并绑定存档
+                if (!settings.presets) settings.presets = {};
+                if (settings.presets[finalName] && !confirm(`存档 "${finalName}" 已存在，是否覆盖？`)) {
+                    event.target.value = ''; return; // 拒绝覆盖则退出
+                }
+                
+                settings.presets[finalName] = importedRules;
+                settings.activePreset = finalName;
+                settings.rules = JSON.parse(JSON.stringify(importedRules));
+                alert(`已成功导入并保存为存档: ${finalName}`);
+            }
+            
+            // 触发全局刷新
             isRegexDirty = true;
             saveSettingsDebounced();
-            renderPresetDropdown(); // 刷新下拉框为“临时规则”
+            renderPresetDropdown(); 
             renderTags();
+            performGlobalCleanse(); // 导入后立即清理当前屏幕
             
-            alert("规则导入成功！(当前为临时状态，如果需要保存请点击【新建】)");
         } catch (err) {
             alert("导入失败：请确保文件是有效的 JSON 规则文件。");
         }
-        event.target.value = ''; 
+        event.target.value = ''; // 清空 input 允许重复导入同一文件
     };
     reader.readAsText(file);
 }
@@ -778,6 +803,33 @@ function deleteCurrentPreset() {
         renderPresetDropdown();
         alert(`存档 "${name}" 已删除。`);
     }
+}
+
+// --- 7. 重命名当前存档 ---
+function renameCurrentPreset() {
+    const settings = extension_settings[extensionName];
+    const oldName = settings.activePreset;
+    
+    if (!oldName) {
+        alert("当前处于【临时规则】状态，请先新建存档后再重命名。");
+        return;
+    }
+    
+    const newName = prompt("请输入新的存档名称：", oldName);
+    if (!newName || newName === oldName) return; // 取消或没改名
+    
+    if (settings.presets[newName]) {
+        alert(`存档 "${newName}" 已存在，请换一个名称。`);
+        return;
+    }
+    
+    // 把旧数据转移到新名字下，并删除旧名字
+    settings.presets[newName] = settings.presets[oldName];
+    delete settings.presets[oldName];
+    settings.activePreset = newName;
+    
+    saveSettingsDebounced();
+    renderPresetDropdown();
 }
 
 let isBooted = false;
