@@ -303,16 +303,25 @@ function initRealtimeInterceptor() {
 }
 
 function setupUI() {
-    // 修复 1：增加挂载点双保险。如果原有的 wand 容器不存在，就将其挂载到酒馆原生的左侧扩展面板 (#extensions_settings)
-    const targetContainer = $('#data_bank_wand_container').length ? $('#data_bank_wand_container') : $('#extensions_settings');
-    
-    if (!$('#bl-wand-btn').length) {
-        targetContainer.append(`
-            <div id="bl-wand-btn" class="menu_button" title="词汇映射管理" style="cursor: pointer; padding: 10px; border-top: 1px solid var(--SmartThemeBorderColor, #555);">
-                <i class="fa-solid fa-language fa-fw"></i><span> 词汇映射</span>
-            </div>`);
-    }
+    // 自动轮询等待酒馆的“魔杖菜单”加载完成，确保按钮严格回到原位
+    const injectButton = () => {
+        const $container = $('#data_bank_wand_container');
+        if ($container.length === 0) {
+            // 如果魔杖菜单还没渲染出来，等 500 毫秒再试，直到它出现为止
+            setTimeout(injectButton, 500); 
+            return;
+        }
+        if (!$('#bl-wand-btn').length) {
+            // 加入 class="menu_button" 继承酒馆原生的菜单排版
+            $container.append(`
+                <div id="bl-wand-btn" class="menu_button" title="词汇映射管理">
+                    <i class="fa-solid fa-language fa-fw"></i><span> 词汇映射</span>
+                </div>`);
+        }
+    };
+    injectButton(); // 启动挂载按钮任务
 
+    // 生成主设置面板 (隐藏状态，点击上面的按钮才会弹出)
     if (!$('#bl-purifier-popup').length) {
         $('body').append(`
             <div id="bl-purifier-popup">
@@ -333,12 +342,13 @@ function setupUI() {
             </div>`);
     }
 
+    // 补回确认清理的警告弹窗
     if (!$('#bl-confirm-modal').length) {
         $('body').append(`
             <div id="bl-confirm-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9999999;flex-direction:column;justify-content:center;align-items:center;color:white;">
                 <div style="background:var(--bl-background-popup, #222);padding:25px;border-radius:12px;text-align:center;max-width:400px;border:1px solid var(--bl-border-color, #444);">
                     <h3 style="color:#ff4757;margin-top:0;">⚠️ 危险操作警告</h3>
-                    <p style="font-size:14px;color:#ccc;line-height:1.5;">这将会强制扫描并修改当前所有内存聊天记录、酒馆配置数据。<br><br><b>强烈建议在此操作前，将SillyTavern当前的预设切换至「Default」或任意废弃预设！</b>以免常用预设被意外污染！</p>
+                    <p style="font-size:14px;color:#ccc;line-height:1.5;">这将会强制扫描并修改当前所有内存聊天记录、酒馆配置数据。<br><br><b>强烈建议在此操作前，将SillyTavern当前的预设切换至「Default」或任意废弃预设。</b>以免常用预设被意外污染。</p>
                     <div style="margin-top:20px;display:flex;gap:15px;justify-content:center;">
                         <button id="bl-modal-cancel" style="padding:10px 20px;border-radius:6px;border:none;background:#555;color:white;cursor:pointer;">取消</button>
                         <button id="bl-modal-confirm" style="padding:10px 20px;border-radius:6px;border:none;background:#d32f2f;color:white;cursor:pointer;">我已阅读警告，已完成切换预设</button>
@@ -348,6 +358,7 @@ function setupUI() {
         `);
     }
 
+    // 生成存档工具栏
     if (!$('.bl-tools-bar').length) {
         $(`<div class="bl-tools-bar">
             <div class="bl-tools-group bl-row-full">
