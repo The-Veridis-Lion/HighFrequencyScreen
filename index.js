@@ -4,22 +4,19 @@ import { saveSettingsDebounced, eventSource, event_types, saveChat, chat_metadat
 const extensionName = "ultimate_purifier";
 const defaultSettings = { rules: [], presets: {}, activePreset: "" };
 
-// 缓存正则与映射字典
 let cachedRegex = null;
 let wordToRuleMap = {};
 let isRegexDirty = true; 
+let currentEditingIndex = -1; 
 
-// 剥离引号并按中英符号分割
 function parseInputToWords(text) {
     if (!text) return [];
     const noQuotes = text.replace(/['"‘’”“”]/g, ' ');
     return noQuotes.split(/[\s,，、\n]+/).map(w => w.trim()).filter(w => w);
 }
 
-// 构建正则及映射字典
 function getPurifyRegex() {
     if (!isRegexDirty) return cachedRegex;
-
     const rules = extension_settings[extensionName]?.rules || [];
     wordToRuleMap = {};
     let allTargets = [];
@@ -40,12 +37,10 @@ function getPurifyRegex() {
         const escaped = sorted.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         cachedRegex = new RegExp(`(${escaped.join('|')})`, 'gmu');
     }
-    
     isRegexDirty = false;
     return cachedRegex;
 }
 
-// 抽取替换词
 function dynamicReplacer(match) {
     const reps = wordToRuleMap[match];
     if (!reps || reps.length === 0) return ''; 
@@ -53,18 +48,16 @@ function dynamicReplacer(match) {
     return reps[randIndex];
 }
 
-// 保护区检测
 function isProtectedNode(node) {
     if (!node || !node.closest) return false;
     if (node.id === 'send_textarea' || node.classList.contains('edit_textarea')) return true;
-    if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal')) return true;
+    if (node.closest('#bl-purifier-popup, #bl-batch-popup, #bl-confirm-modal, #bl-rule-edit-modal')) return true;
     if (node.closest('#right-nav-panel, .right_menu, .drawer-content, .popup, .shadow_popup, .character-modal, #top-bar')) {
         return true;
     }
     return false;
 }
 
-// 递归对象清理
 function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     let changes = 0;
     if (!rootObj || typeof rootObj !== 'object') return changes;
@@ -79,7 +72,6 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
         try {
             for (let key in current) {
                 if (Object.prototype.hasOwnProperty.call(current, key)) {
-                    // 保护插件自身规则配置
                     if (isGlobalSettings && key === extensionName) continue; 
                     const val = current[key];
                     if (typeof val === 'string') {
@@ -98,7 +90,6 @@ function safeDeepScrub(rootObj, regex, isGlobalSettings = false) {
     return changes;
 }
 
-// DOM清理
 function purifyDOM(rootNode, regex) {
     if (!rootNode) return;
     const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT, null, false);
@@ -182,7 +173,6 @@ function performGlobalCleanse() {
             console.error("[Ultimate Purifier] 存盘失败", e);
         }
     }
-    
     purifyDOM(document.getElementById('chat'), regex);
 }
 
@@ -267,69 +257,94 @@ function initRealtimeInterceptor() {
 }
 
 function setupUI() {
+    $('#bl-purifier-popup, #bl-rule-edit-modal, #bl-confirm-modal').remove();
+
     if (!$('#bl-wand-btn').length) {
         $('#data_bank_wand_container').append(`
             <div id="bl-wand-btn" title="词汇映射管理">
                 <i class="fa-solid fa-language fa-fw"></i><span>词汇映射</span>
             </div>`);
     }
-    if (!$('#bl-purifier-popup').length) {
-        $('body').append(`
-            <div id="bl-purifier-popup">
-                <div class="bl-header">
-                    <h3 class="bl-title">全局屏蔽与映射规则</h3>
-                    <button id="bl-close-btn" class="bl-close">&times;</button>
-                </div>
+    
+    // 主界面 UI (明确默认隐藏，交给按钮唤醒)
+    $('body').append(`
+        <div id="bl-purifier-popup" style="display:none;">
+            <div class="bl-header">
+                <h3 class="bl-title">全局屏蔽与映射规则</h3>
+                <button id="bl-close-btn" class="bl-close">&times;</button>
+            </div>
 
-                <div class="bl-tools-bar" style="display:flex; flex-direction:column; gap:8px; margin:10px 0 15px 0; border-bottom:1px solid var(--bl-border-color); padding-bottom:12px;">
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="bl-preset-select" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--bl-border-color); background:var(--bl-input-bg); color:var(--bl-text-primary); outline:none; font-family:inherit;"></select>
-                        <button id="bl-preset-rename" title="重命名" style="padding:8px 12px; border-radius:6px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); cursor:pointer;">✏️</button>
-                        <button id="bl-preset-delete" title="删除" style="padding:8px 12px; border-radius:6px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); cursor:pointer; color:var(--bl-danger-color);">💀</button>
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <button class="bl-tool-btn" id="bl-preset-new">新建</button>
-                        <button class="bl-tool-btn" id="bl-preset-save">保存</button>
-                        <button class="bl-tool-btn" id="bl-preset-import">导入</button>
-                        <button class="bl-tool-btn" id="bl-preset-export">导出</button>
-                    </div>
+            <div class="bl-tools-bar" style="display:flex; flex-direction:column; gap:8px; margin:10px 0 15px 0; border-bottom:1px solid var(--bl-border-color); padding-bottom:12px;">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="bl-preset-select" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--bl-border-color); background:var(--bl-input-bg); color:var(--bl-text-primary); outline:none; font-family:inherit;"></select>
+                    <button id="bl-preset-rename" title="重命名" class="bl-icon-btn">✏️</button>
+                    <button id="bl-preset-delete" title="删除" class="bl-icon-btn" style="color:var(--bl-danger-color);">💀</button>
                 </div>
-
-                <div class="bl-rule-builder">
-                    <textarea id="bl-target-input" class="bl-textarea" placeholder="输入目标词 (必填，支持批量，逗号/空格分隔)" rows="2"></textarea>
-                    <div class="bl-rule-arrow">⬇️ 随机替换为 ⬇️</div>
-                    <textarea id="bl-rep-input" class="bl-textarea" placeholder="输入替换词 (可选，支持批量)。不填则直接删除目标词" rows="2"></textarea>
-                    <button id="bl-add-rule-btn" class="bl-add-rule-btn">添加规则组</button>
-                </div>
-                <div id="bl-tags-container" style="margin-top:15px;"></div>
-                <div class="bl-footer">
-                    <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
-                </div>
-            </div>`);
-    }
-
-    if (!$('#bl-confirm-modal').length) {
-        $('body').append(`
-            <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
-                <div style="background:var(--bl-background-popup); padding:30px; border-radius:12px; max-width:450px; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color);">
-                    <h3 style="color:var(--bl-danger-color); margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
-                    <p style="font-size:15px; color:var(--bl-text-primary); line-height:1.6; margin:0 0 25px 0; text-align:left;">
-                        为了防止深度清理修改您的常用预设(Preset)，请在此刻：
-                        <br><br>
-                        👉 <strong style="color:var(--bl-danger-color); background:var(--bl-background-secondary); padding:6px 10px; border-radius:6px; display:inline-block; margin-bottom:10px; border: 1px solid var(--bl-border-color);">将SillyTavern当前的预设切换至「Default」或任意废弃预设！</strong>
-                        <br>
-                        <span style="font-size:13px; color:var(--bl-text-secondary);">清理完成后页面会刷新，届时可切回原预设即可保证预设安全。</span>
-                    </p>
-                    <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <button id="bl-modal-cancel" style="flex:1; padding:12px; border:1px solid var(--bl-border-color); border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-primary); cursor:pointer; font-weight:bold; transition: opacity 0.2s;">取消返回</button>
-                        <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-secondary); cursor:not-allowed; font-weight:bold; transition: opacity 0.2s; opacity: 0.6;">我已阅读警告，已完成切换预设 (3s)</button>
-                    </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="bl-tool-btn" id="bl-preset-new">新建</button>
+                    <button class="bl-tool-btn" id="bl-preset-save">保存</button>
+                    <button class="bl-tool-btn" id="bl-preset-import">导入</button>
+                    <button class="bl-tool-btn" id="bl-preset-export">导出</button>
                 </div>
             </div>
-        `);
-        
-        $('#bl-modal-cancel').hover(function(){ $(this).css('opacity', '0.7') }, function(){ $(this).css('opacity', '1') });
-    }
+
+            <button id="bl-open-new-rule-btn" class="bl-add-rule-btn" style="width:100%; margin-bottom:10px;">➕ 新增规则组</button>
+
+            <div id="bl-tags-container" style="max-height:220px; overflow-y:auto; padding-right:5px;"></div>
+            
+            <div class="bl-footer">
+                <button id="bl-deep-clean-btn" class="bl-deep-clean-btn">深度屏蔽与替换</button>
+            </div>
+        </div>`);
+
+    // 编辑/新增规则专用的模态弹窗
+    $('body').append(`
+        <div id="bl-rule-edit-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
+            <div style="background:var(--bl-background-popup); padding:20px 25px; border-radius:12px; width:90%; max-width:400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color); display:flex; flex-direction:column; gap:12px; box-sizing:border-box;">
+                <h3 id="bl-edit-modal-title" style="margin:0; font-size:18px; color:var(--bl-text-primary);">编辑规则组</h3>
+                
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:13px; color:var(--bl-text-secondary);">规则组名称 (方便识别)</label>
+                    <input type="text" id="bl-edit-name" class="bl-input" placeholder="例如：口癖修正、脏话过滤...">
+                </div>
+                
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:13px; color:var(--bl-text-secondary);">目标词 (必填，逗号/空格分隔)</label>
+                    <textarea id="bl-edit-targets" class="bl-textarea" rows="3" placeholder="例如：苹果, 香蕉"></textarea>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:13px; color:var(--bl-text-secondary);">替换词 (可选，为空则直接删除)</label>
+                    <textarea id="bl-edit-reps" class="bl-textarea" rows="3" placeholder="例如：水果"></textarea>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; gap:10px; margin-top:10px;">
+                    <button id="bl-edit-cancel" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-background-secondary); border:1px solid var(--bl-border-color); color:var(--bl-text-primary); cursor:pointer; font-weight:bold;">取消</button>
+                    <button id="bl-edit-save" style="flex:1; padding:10px; border-radius:8px; background:var(--bl-accent-color); border:none; color:white; font-weight:bold; cursor:pointer;">保存</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    // 深度清理警告弹窗
+    $('body').append(`
+        <div id="bl-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; font-family:inherit; backdrop-filter:blur(4px);">
+            <div style="background:var(--bl-background-popup); padding:30px; border-radius:12px; max-width:450px; text-align:center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--bl-border-color);">
+                <h3 style="color:var(--bl-danger-color); margin-top:0; font-size: 22px;">⚠️ 深度清理警告</h3>
+                <p style="font-size:15px; color:var(--bl-text-primary); line-height:1.6; margin:0 0 25px 0; text-align:left;">
+                    为了防止深度清理修改您的常用预设(Preset)，请在此刻：
+                    <br><br>
+                    👉 <strong style="color:var(--bl-danger-color); background:var(--bl-background-secondary); padding:6px 10px; border-radius:6px; display:inline-block; margin-bottom:10px; border: 1px solid var(--bl-border-color);">将SillyTavern当前的预设切换至「Default」或任意废弃预设！</strong>
+                    <br>
+                    <span style="font-size:13px; color:var(--bl-text-secondary);">清理完成后页面会刷新，届时可切回原预设即可保证预设安全。</span>
+                </p>
+                <div style="display:flex; justify-content:space-between; gap:15px;">
+                    <button id="bl-modal-cancel" style="flex:1; padding:12px; border:1px solid var(--bl-border-color); border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-primary); cursor:pointer; font-weight:bold; transition: opacity 0.2s;">取消返回</button>
+                    <button id="bl-modal-confirm" disabled style="flex:1; padding:12px; border:none; border-radius:8px; background:var(--bl-background-secondary); color:var(--bl-text-secondary); cursor:not-allowed; font-weight:bold; transition: opacity 0.2s; opacity: 0.6;">我已阅读警告，已完成切换预设 (3s)</button>
+                </div>
+            </div>
+        </div>
+    `);
 }
 
 function showConfirmModal() {
@@ -370,7 +385,6 @@ function showConfirmModal() {
     });
 }
 
-// 更新工具栏UI状态
 function updateToolbarUI() {
     const settings = extension_settings[extensionName];
     const select = $('#bl-preset-select');
@@ -385,37 +399,111 @@ function updateToolbarUI() {
     select.val(settings.activePreset || "");
 }
 
-function bindEvents() {
-    $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { updateToolbarUI(); renderTags(); $('#bl-purifier-popup').fadeIn(200); });
-    $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => $('#bl-purifier-popup').fadeOut(200));
+function renderTags() {
+    const rules = extension_settings[extensionName]?.rules || [];
+    const html = rules.map((r, i) => {
+        const name = r.name || `未命名规则组 ${i + 1}`;
+        let targetPreview = r.targets.join(', ');
+        if (targetPreview.length > 20) targetPreview = targetPreview.substring(0, 20) + '...';
+        
+        return `
+        <div class="bl-rule-card">
+            <div class="bl-rule-info">
+                <div class="bl-rule-name">${name}</div>
+                <div class="bl-rule-preview">过滤: ${targetPreview}</div>
+            </div>
+            <div class="bl-rule-actions">
+                <button class="bl-rule-edit" data-index="${i}" title="编辑">✏️</button>
+                <button class="bl-rule-del" data-index="${i}" title="删除">&times;</button>
+            </div>
+        </div>`;
+    }).join('');
     
-    $(document).off('click', '#bl-add-rule-btn').on('click', '#bl-add-rule-btn', () => {
-        const targets = parseInputToWords($('#bl-target-input').val());
-        const replacements = parseInputToWords($('#bl-rep-input').val());
+    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:13px; padding: 20px 0;">当前无规则，请点击上方按钮新增</div>');
+}
 
-        if (targets.length > 0) {
-            extension_settings[extensionName].rules.push({ targets, replacements });
-            $('#bl-target-input').val('');
-            $('#bl-rep-input').val('');
-            isRegexDirty = true; 
-            saveSettingsDebounced();
-            renderTags();
-            performGlobalCleanse(); 
-        }
+function openEditModal(index = -1) {
+    const settings = extension_settings[extensionName];
+    currentEditingIndex = index;
+    const modal = $('#bl-rule-edit-modal');
+    
+    if (index === -1) {
+        $('#bl-edit-modal-title').text('✨ 新增规则组');
+        $('#bl-edit-name').val('');
+        $('#bl-edit-targets').val('');
+        $('#bl-edit-reps').val('');
+    } else {
+        const rule = settings.rules[index];
+        $('#bl-edit-modal-title').text('✏️ 编辑规则组');
+        $('#bl-edit-name').val(rule.name || '');
+        $('#bl-edit-targets').val(rule.targets.join(', '));
+        $('#bl-edit-reps').val(rule.replacements.join(', '));
+    }
+    modal.css('display', 'flex');
+}
+
+function bindEvents() {
+    // 修复动画逻辑，强制以 Flex 布局平滑展现
+    $(document).off('click', '#bl-wand-btn').on('click', '#bl-wand-btn', () => { 
+        updateToolbarUI(); 
+        renderTags(); 
+        $('#bl-purifier-popup').css('display', 'flex').hide().fadeIn(200); 
     });
-
-    $(document).off('click', '.bl-tag-del').on('click', '.bl-tag-del', function() {
+    
+    $(document).off('click', '#bl-close-btn').on('click', '#bl-close-btn', () => {
+        $('#bl-purifier-popup').fadeOut(200);
+    });
+    
+    $(document).off('click', '#bl-open-new-rule-btn').on('click', '#bl-open-new-rule-btn', () => openEditModal(-1));
+    
+    $(document).off('click', '.bl-rule-edit').on('click', '.bl-rule-edit', function() {
+        openEditModal($(this).data('index'));
+    });
+    
+    $(document).off('click', '.bl-rule-del').on('click', '.bl-rule-del', function() {
         extension_settings[extensionName].rules.splice($(this).data('index'), 1);
         isRegexDirty = true;
         saveSettingsDebounced();
         renderTags();
     });
 
+    $(document).off('click', '#bl-edit-cancel').on('click', '#bl-edit-cancel', () => {
+        $('#bl-rule-edit-modal').hide();
+    });
+
+    $(document).off('click', '#bl-edit-save').on('click', '#bl-edit-save', () => {
+        const nameVal = $('#bl-edit-name').val().trim();
+        const targets = parseInputToWords($('#bl-edit-targets').val());
+        const replacements = parseInputToWords($('#bl-edit-reps').val());
+
+        if (targets.length === 0) {
+            alert("目标词不能为空！");
+            return;
+        }
+
+        const newRule = {
+            name: nameVal || `规则组 ${extension_settings[extensionName].rules.length + 1}`,
+            targets: targets,
+            replacements: replacements
+        };
+
+        if (currentEditingIndex === -1) {
+            extension_settings[extensionName].rules.push(newRule);
+        } else {
+            extension_settings[extensionName].rules[currentEditingIndex] = newRule;
+        }
+
+        isRegexDirty = true; 
+        saveSettingsDebounced();
+        renderTags();
+        performGlobalCleanse();
+        $('#bl-rule-edit-modal').hide();
+    });
+
     $(document).off('click', '#bl-deep-clean-btn').on('click', '#bl-deep-clean-btn', () => {
         showConfirmModal();
     });
 
-    // 存档系统交互事件
     $(document).off('change', '#bl-preset-select').on('change', '#bl-preset-select', function() {
         const settings = extension_settings[extensionName];
         const name = $(this).val();
@@ -522,6 +610,11 @@ function bindEvents() {
                     const newName = prompt("导入成功！\n输入存档名称直接保存，或点击取消仅作为临时规则预览：", defaultName);
                     
                     const settings = extension_settings[extensionName];
+                    
+                    importedRules.forEach((r, idx) => {
+                        if (!r.name) r.name = r.targets?.[0] || `未命名规则 ${idx+1}`;
+                    });
+                    
                     settings.rules = importedRules;
                     
                     if (newName) {
@@ -560,38 +653,14 @@ function bindEvents() {
     if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, delayedFullCleanse);          
 }
 
-function renderTags() {
-    const rules = extension_settings[extensionName].rules || [];
-    const html = rules.map((r, i) => {
-        const fullTargets = r.targets.join(', ');
-        const fullReps = r.replacements.length > 0 ? r.replacements.join(', ') : '无 (直接删除)';
-        
-        return `<div class="bl-tag" title="目标:\n${fullTargets}\n\n替换为:\n${fullReps}">
-            <div class="bl-tag-layout">
-                <div class="bl-tag-scroll-box bl-tag-left">
-                    <b style="color:var(--bl-danger-color)">${fullTargets}</b>
-                </div>
-                <div class="bl-tag-arrow">➔</div>
-                <div class="bl-tag-scroll-box bl-tag-right">
-                    <b style="color:var(--bl-accent-color)">${fullReps}</b>
-                </div>
-            </div>
-            <div class="bl-tag-del" data-index="${i}" title="删除规则">&times;</div>
-        </div>`;
-    }).join('');
-    
-    $('#bl-tags-container').html(html || '<div style="opacity:0.5; width:100%; text-align:center; font-size:12px; padding: 10px 0;">当前无规则</div>');
-}
-
-// 自动数据迁移
 function migrateOldData() {
     const settings = extension_settings[extensionName];
     
-    // 迁移旧 bannedWords
     if (settings && settings.bannedWords) {
         if (settings.bannedWords.length > 0) {
             settings.rules = settings.rules || [];
             settings.rules.push({
+                name: "旧版本过滤词",
                 targets: [...settings.bannedWords],
                 replacements: []
             });
@@ -600,14 +669,18 @@ function migrateOldData() {
         isRegexDirty = true;
     }
 
-    // 迁移至多存档结构
     if (settings) {
         if (!settings.presets) settings.presets = {};
         if (settings.activePreset === undefined) settings.activePreset = "";
 
-        if (settings.rules && settings.rules.length > 0 && Object.keys(settings.presets).length === 0) {
-            settings.presets["默认存档"] = JSON.parse(JSON.stringify(settings.rules));
-            settings.activePreset = "默认存档";
+        if (settings.rules && settings.rules.length > 0) {
+            settings.rules.forEach((r, i) => {
+                if (!r.name) r.name = `规则组 ${i+1}`; 
+            });
+            if (Object.keys(settings.presets).length === 0) {
+                settings.presets["默认存档"] = JSON.parse(JSON.stringify(settings.rules));
+                settings.activePreset = "默认存档";
+            }
         }
         saveSettingsDebounced();
     }
